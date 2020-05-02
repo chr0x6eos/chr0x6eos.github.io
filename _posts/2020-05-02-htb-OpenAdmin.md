@@ -2,16 +2,11 @@
 layout: post
 title: "Hack The Box - OpenAdmin Writeup"
 author: Chr0x6eOs
-date: "2020-04-02"
+date: "2020-05-02"
 subject: "OpenAdmin Writeup"
 keywords: [HTB, CTF, Hack The Box, Security, Linux]
 lang: "en"
 titlepage: true
-titlepage-text-color: "FFFFFF"
-titlepage-color: "0c0d0e"
-titlepage-rule-color: "8ac53e"
-toc: true
-toc-own-page: true
 ...
 
 # Overview
