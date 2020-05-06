@@ -8,7 +8,7 @@ keywords: [HTB, CTF, Hack The Box, Security, Linux]
 lang: "en"
 titlepage: true
 image:
-    path: /assets/htb/OpenAdmin/openadmin.png
+    path: assets/htb/OpenAdmin/openadmin.png
     width: 100
     height: 100
 ...
