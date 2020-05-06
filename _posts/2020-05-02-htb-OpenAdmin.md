@@ -7,6 +7,10 @@ subject: "OpenAdmin Writeup"
 keywords: [HTB, CTF, Hack The Box, Security, Linux]
 lang: "en"
 titlepage: true
+image:
+    path: /assets/htb/OpenAdmin/openadmin.png
+    width: 500
+    height: 500
 ...
 
 # Overview
