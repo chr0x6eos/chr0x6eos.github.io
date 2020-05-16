@@ -1159,26 +1159,15 @@ loop3    7:3    0 54.2M  1 loop /snap/lxd/10756
 loop4    7:4    0 89.1M  1 loop /snap/core/8039
 sda      8:0    0   25G  0 disk
 ├─sda1   8:1    0    1M  0 part
-├─sda2   8:2    0   16G  0 part / <-- not mounted!
+├─sda2   8:2    0   16G  0 part /
 ├─sda3   8:3    0    1G  0 part /boot
 └─sda4   8:4    0    2G  0 part /home
 sdb      8:16   0  512M  0 disk
 └─sdb1   8:17   0  511M  0 part /root
 sr0     11:0    1 1024M  0 rom
 ```
-Listing all disks, we can see that sda2 is not mounted, but still has a size of 16G.
-
-```bash
-root@patents:~# df
-df
-Filesystem     1K-blocks    Used Available Use% Mounted on
-udev              976616       0    976616   0% /dev
-tmpfs             201728   10484    191244   6% /run
-/dev/sda2       15465340 4306660  10303436  30% /
-tmpfs            1008624       0   1008624   0% /dev/shm
-[...]
-```
-Using df we can check again if /dev/sda2 is mounted anywhere. Let us mount sda2 and see if we find root.txt there.
+Listing all disks, we can see that sda2 is mounted on /, but sdb1 is mounted on root.
+Let us mount sda2 on /mnt/ and see if we find root.txt then.
 ```bash
 root@patents:~# mount /dev/sda2 /mnt/
 root@patents:~# cd /mnt/root/; ls
