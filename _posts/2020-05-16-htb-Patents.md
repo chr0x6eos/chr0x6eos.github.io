@@ -151,7 +151,7 @@ root@silence:~/extracted/customXml# cat item1.xml
 ]>
 <xxe>&exfil;</xxe>
 ```
-The XXE now gets the ext.dtd file, which contains the contains the file entity, which again contains the exfil entity. We now update the docx file and upload it again.
+The XXE now gets the ext.dtd file, which contains the file entity, which again contains the exfil entity. We now update the docx file and upload it again.
 
 ```bash
 root@silence:~# cat ext.dtd
