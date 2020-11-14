@@ -4,7 +4,7 @@ title: "Hack The Box - Intense Writeup"
 author: Chr0x6eOs
 date: "2020-11-14"
 subject: "Intense Writeup"
-keywords: [HTB, CTF, Hack The Box, Security, Chr0x6eOs, Linux, ]
+keywords: [HTB, CTF, Hack The Box, Security, Chr0x6eOs, Linux, web, SQLite, SQLi, LFI, SNMP, buffer-overflow, ROP]
 lang: "en"
 image:
     path: assets/htb/Intense/logo.png
